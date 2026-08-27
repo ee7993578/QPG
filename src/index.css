@@ -1,0 +1,59 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+.dark {
+  color-scheme: dark;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  @apply bg-ink-50 text-ink-900 antialiased font-sans;
+  @apply dark:bg-ink-950 dark:text-ink-50;
+}
+
+::selection {
+  @apply bg-gold-300/60;
+}
+
+/* Slim, quiet scrollbars for editor / preview panels */
+.scroll-thin {
+  scrollbar-width: thin;
+  scrollbar-color: theme('colors.ink.300') transparent;
+}
+.scroll-thin::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.scroll-thin::-webkit-scrollbar-thumb {
+  background-color: theme('colors.ink.300');
+  border-radius: 999px;
+}
+.dark .scroll-thin::-webkit-scrollbar-thumb {
+  background-color: theme('colors.ink.700');
+}
+
+@layer utilities {
+  .focus-ring {
+    @apply outline-none ring-2 ring-offset-2 ring-gold-400 ring-offset-paper-50 dark:ring-offset-ink-900;
+  }
+}
+
+/* A4 page: fixed aspect ratio 210:297 so the preview always looks like real paper */
+.a4-page {
+  width: 100%;
+  aspect-ratio: 210 / 297;
+  background: theme('colors.paper.50');
+}
+
+@media print {
+  body * { visibility: hidden; }
+  #print-root, #print-root * { visibility: visible; }
+  #print-root { position: absolute; inset: 0; }
+}
