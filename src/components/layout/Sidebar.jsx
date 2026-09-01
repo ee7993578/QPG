@@ -3,16 +3,18 @@ import { NavLink } from 'react-router-dom'
 import { LayoutDashboard, FilePlus2, FolderOpen, Settings, GraduationCap } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { useAppStore } from '../../store/useAppStore'
+import { useTranslate } from '../../i18n'
 
 const items = [
-  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/exam/new', label: 'Create Exam', icon: FilePlus2 },
-  { to: '/papers', label: 'My Paper', icon: FolderOpen },
-  { to: '/settings', label: 'Settings', icon: Settings },
+  { to: '/dashboard', labelKey: 'nav_dashboard', icon: LayoutDashboard },
+  { to: '/exam/new', labelKey: 'nav_createExam', icon: FilePlus2 },
+  { to: '/papers', labelKey: 'nav_myPaper', icon: FolderOpen },
+  { to: '/settings', labelKey: 'nav_settings', icon: Settings },
 ]
 
 export function Sidebar() {
   const teacher = useAppStore((s) => s.teacher)
+  const t = useTranslate()
 
   return (
     <aside className="hidden md:flex md:w-60 md:flex-col md:border-r md:border-ink-100 md:bg-white md:dark:border-ink-800 md:dark:bg-ink-900">
@@ -21,13 +23,13 @@ export function Sidebar() {
           <GraduationCap className="h-5 w-5" />
         </div>
         <div>
-          <p className="font-display text-base font-semibold leading-none text-ink-900 dark:text-ink-50">PaperCraft</p>
-          <p className="text-[11px] text-ink-400">Question Paper Builder</p>
+          <p className="font-display text-base font-semibold leading-none text-ink-900 dark:text-ink-50">{t('appName')}</p>
+          <p className="text-[11px] text-ink-400">{t('tagline')}</p>
         </div>
       </div>
 
       <nav className="flex-1 space-y-1 px-3">
-        {items.map(({ to, label, icon: Icon }) => (
+        {items.map(({ to, labelKey, icon: Icon }) => (
           <NavLink
             key={to}
             to={to}
@@ -41,7 +43,7 @@ export function Sidebar() {
             }
           >
             <Icon className="h-4 w-4 shrink-0" />
-            {label}
+            {t(labelKey)}
           </NavLink>
         ))}
       </nav>

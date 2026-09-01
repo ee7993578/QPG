@@ -9,7 +9,7 @@ import { Input } from '../components/ui/Input'
 import { Select } from '../components/ui/Select'
 import { Dialog } from '../components/ui/Dialog'
 import { useAppStore } from '../store/useAppStore'
-import { computePaperMarks, formatDate, formatDuration } from '../lib/utils'
+import { computePaperMarks, formatDate, formatDuration, classSectionLabel, resolveSubject, resolveClass } from '../lib/utils'
 import { CLASS_OPTIONS, SUBJECTS, EXAM_TYPES } from '../data/mockData'
 
 export default function MyPapers() {
@@ -30,10 +30,10 @@ export default function MyPapers() {
     return papers
       .filter((p) => {
         const name = p.examType === 'Custom' ? p.customExamName : p.examType
-        const haystack = `${name} ${p.subject} ${p.className} ${p.section} ${p.examDate}`.toLowerCase()
+        const haystack = `${name} ${resolveSubject(p)} ${classSectionLabel(p)} ${p.examDate}`.toLowerCase()
         if (query && !haystack.includes(query.toLowerCase())) return false
-        if (classFilter && p.className !== classFilter) return false
-        if (subjectFilter && p.subject !== subjectFilter) return false
+        if (classFilter && resolveClass(p) !== classFilter) return false
+        if (subjectFilter && resolveSubject(p) !== subjectFilter) return false
         if (statusFilter && p.status !== statusFilter) return false
         return true
       })
@@ -101,7 +101,7 @@ export default function MyPapers() {
                         <Badge variant={paper.status === 'draft' ? 'neutral' : 'success'}>{paper.status === 'draft' ? 'Draft' : 'Saved'}</Badge>
                       </div>
                       <p className="mt-1 text-xs text-ink-400">
-                        {paper.subject} · Class {paper.className}-{paper.section} · {formatDate(paper.examDate)} · {formatDuration(paper.duration)} · {obtainableMarks}/{paper.totalMarks} marks
+                        {resolveSubject(paper)} · {classSectionLabel(paper) ? `Class ${classSectionLabel(paper)} · ` : ''}{formatDate(paper.examDate)} · {formatDuration(paper.duration)} · {obtainableMarks}/{paper.totalMarks} marks
                       </p>
                     </div>
                     <div className="flex shrink-0 flex-wrap gap-2">

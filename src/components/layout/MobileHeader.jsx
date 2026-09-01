@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { useAppStore } from '../../store/useAppStore'
 import { cn } from '../../lib/utils'
+import { useTranslate } from '../../i18n'
 
 export function MobileHeader({ title }) {
   const [open, setOpen] = useState(false)
@@ -16,6 +17,9 @@ export function MobileHeader({ title }) {
   const papers = useAppStore((s) => s.papers)
   const theme = useAppStore((s) => s.theme)
   const setTheme = useAppStore((s) => s.setTheme)
+  const language = useAppStore((s) => s.language)
+  const setLanguage = useAppStore((s) => s.setLanguage)
+  const t = useTranslate()
 
   const targetPaperId = activePaperId && papers.some((p) => p.id === activePaperId) ? activePaperId : papers[0]?.id
 
@@ -25,12 +29,12 @@ export function MobileHeader({ title }) {
   }
 
   const items = [
-    { label: 'Profile', icon: User, onClick: () => go('/settings') },
-    { label: 'Dashboard', icon: LayoutDashboard, onClick: () => go('/dashboard') },
-    { label: 'Edit', icon: PenLine, onClick: () => go(targetPaperId ? `/paper/${targetPaperId}?view=edit` : '/exam/new') },
-    { label: 'Preview', icon: Eye, onClick: () => go(targetPaperId ? `/paper/${targetPaperId}?view=preview` : '/exam/new') },
-    { label: 'My Paper', icon: FolderOpen, onClick: () => go('/papers') },
-    { label: 'Settings', icon: Settings, onClick: () => go('/settings') },
+    { label: t('nav_profile'), icon: User, onClick: () => go('/settings') },
+    { label: t('nav_dashboard'), icon: LayoutDashboard, onClick: () => go('/dashboard') },
+    { label: t('nav_edit'), icon: PenLine, onClick: () => go(targetPaperId ? `/paper/${targetPaperId}?view=edit` : '/exam/new') },
+    { label: t('nav_preview'), icon: Eye, onClick: () => go(targetPaperId ? `/paper/${targetPaperId}?view=preview` : '/exam/new') },
+    { label: t('nav_myPaper'), icon: FolderOpen, onClick: () => go('/papers') },
+    { label: t('nav_settings'), icon: Settings, onClick: () => go('/settings') },
   ]
 
   return (
@@ -58,7 +62,7 @@ export function MobileHeader({ title }) {
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-ink-700 text-gold-300 dark:bg-gold-400 dark:text-ink-950">
                   <GraduationCap className="h-4 w-4" />
                 </div>
-                <span className="font-display font-semibold text-ink-900 dark:text-ink-50">PaperCraft</span>
+                <span className="font-display font-semibold text-ink-900 dark:text-ink-50">{t('appName')}</span>
               </div>
               <button onClick={() => setOpen(false)} className="p-1 text-ink-400"><X className="h-5 w-5" /></button>
             </div>
@@ -89,13 +93,14 @@ export function MobileHeader({ title }) {
                 className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-ink-600 hover:bg-ink-100 dark:text-ink-300 dark:hover:bg-ink-800"
               >
                 <SunMoon className="h-4 w-4" />
-                Theme · {theme === 'dark' ? 'Dark' : theme === 'light' ? 'Light' : 'System'}
+                {t('nav_theme')} · {t(`theme_${theme}`)}
               </button>
               <button
+                onClick={() => setLanguage(language === 'hi' ? 'en' : 'hi')}
                 className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-ink-600 hover:bg-ink-100 dark:text-ink-300 dark:hover:bg-ink-800"
               >
                 <Languages className="h-4 w-4" />
-                Language · English
+                {t('nav_language')} · {language === 'hi' ? 'हिन्दी' : 'English'}
               </button>
             </nav>
 
@@ -108,7 +113,7 @@ export function MobileHeader({ title }) {
                 )}
               >
                 <LogOut className="h-4 w-4" />
-                Logout
+                {t('nav_logout')}
               </button>
             </div>
           </div>

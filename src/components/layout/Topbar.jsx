@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { SunMoon, Moon, Sun, LogOut, Languages } from 'lucide-react'
 import { useAppStore } from '../../store/useAppStore'
 import { cn } from '../../lib/utils'
+import { useTranslate } from '../../i18n'
 
 const themeIcons = { light: Sun, dark: Moon, system: SunMoon }
 
@@ -11,6 +12,9 @@ export function Topbar({ title, subtitle, right }) {
   const theme = useAppStore((s) => s.theme)
   const setTheme = useAppStore((s) => s.setTheme)
   const logout = useAppStore((s) => s.logout)
+  const language = useAppStore((s) => s.language)
+  const setLanguage = useAppStore((s) => s.setLanguage)
+  const t = useTranslate()
   const ThemeIcon = themeIcons[theme] || SunMoon
 
   const cycleTheme = () => {
@@ -37,10 +41,11 @@ export function Topbar({ title, subtitle, right }) {
           <ThemeIcon className="h-4 w-4" />
         </button>
         <button
-          title="Language: English"
-          className="flex h-9 w-9 items-center justify-center rounded-lg text-ink-500 hover:bg-ink-100 dark:text-ink-300 dark:hover:bg-ink-800"
+          onClick={() => setLanguage(language === 'hi' ? 'en' : 'hi')}
+          title={`${t('nav_language')}: ${language === 'hi' ? 'हिन्दी' : 'English'}`}
+          className="flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold text-ink-500 hover:bg-ink-100 dark:text-ink-300 dark:hover:bg-ink-800"
         >
-          <Languages className="h-4 w-4" />
+          <Languages className="h-4 w-4" /> {language === 'hi' ? 'हिं' : 'EN'}
         </button>
         <button
           onClick={() => { logout(); navigate('/login') }}

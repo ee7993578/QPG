@@ -56,4 +56,7 @@ body {
   body * { visibility: hidden; }
   #print-root, #print-root * { visibility: visible; }
   #print-root { position: absolute; inset: 0; }
+  /* Feature 11 — click-to-format popovers and other on-screen-only controls
+     never appear in the printed / downloaded paper. */
+  .no-print { display: none !important; }
 }

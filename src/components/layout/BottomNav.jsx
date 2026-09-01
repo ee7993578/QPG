@@ -3,12 +3,14 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { LayoutDashboard, PenLine, Eye, FolderOpen } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { useAppStore } from '../../store/useAppStore'
+import { useTranslate } from '../../i18n'
 
 export function BottomNav() {
   const navigate = useNavigate()
   const location = useLocation()
   const activePaperId = useAppStore((s) => s.activePaperId)
   const papers = useAppStore((s) => s.papers)
+  const t = useTranslate()
 
   const targetPaperId = activePaperId && papers.some((p) => p.id === activePaperId)
     ? activePaperId
@@ -26,10 +28,10 @@ export function BottomNav() {
   const isPreview = location.pathname.startsWith('/paper/') && new URLSearchParams(location.search).get('view') === 'preview'
 
   const items = [
-    { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, active: location.pathname === '/dashboard', onClick: () => navigate('/dashboard') },
-    { key: 'edit', label: 'Edit', icon: PenLine, active: isEdit, onClick: () => goBuilder('edit') },
-    { key: 'preview', label: 'Preview', icon: Eye, active: isPreview, onClick: () => goBuilder('preview') },
-    { key: 'myPaper', label: 'My Paper', icon: FolderOpen, active: location.pathname === '/papers', onClick: () => navigate('/papers') },
+    { key: 'dashboard', label: t('nav_dashboard'), icon: LayoutDashboard, active: location.pathname === '/dashboard', onClick: () => navigate('/dashboard') },
+    { key: 'edit', label: t('nav_edit'), icon: PenLine, active: isEdit, onClick: () => goBuilder('edit') },
+    { key: 'preview', label: t('nav_preview'), icon: Eye, active: isPreview, onClick: () => goBuilder('preview') },
+    { key: 'myPaper', label: t('nav_myPaper'), icon: FolderOpen, active: location.pathname === '/papers', onClick: () => navigate('/papers') },
   ]
 
   return (

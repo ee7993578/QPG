@@ -6,7 +6,7 @@ import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
 import { useAppStore } from '../store/useAppStore'
-import { computePaperMarks, formatDate } from '../lib/utils'
+import { computePaperMarks, formatDate, classSectionLabel, resolveSubject } from '../lib/utils'
 
 function StatCard({ icon: Icon, label, value }) {
   return (
@@ -100,9 +100,9 @@ export default function Dashboard() {
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <p className="truncate font-semibold text-ink-800 dark:text-ink-100">
-                          {paper.examType === 'Custom' ? paper.customExamName : paper.examType} · {paper.subject}
+                          {paper.examType === 'Custom' ? paper.customExamName : paper.examType}{resolveSubject(paper) ? ` · ${resolveSubject(paper)}` : ''}
                         </p>
-                        <p className="text-xs text-ink-400 mt-0.5">Class {paper.className}-{paper.section} · {formatDate(paper.examDate)}</p>
+                        <p className="text-xs text-ink-400 mt-0.5">{classSectionLabel(paper) ? `Class ${classSectionLabel(paper)} · ` : ''}{formatDate(paper.examDate)}</p>
                       </div>
                       <Badge variant={paper.status === 'draft' ? 'neutral' : 'success'}>{paper.status === 'draft' ? 'Draft' : 'Saved'}</Badge>
                     </div>
