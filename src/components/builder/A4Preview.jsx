@@ -530,8 +530,12 @@ export function A4Preview({ paper, pageRef, activeSet = '', showAnswerKey = fals
           const sectionShowMarks = section.showMarks !== false
           return (
             <div key={section.id}>
-              <div className="mb-2 flex items-center gap-2.5">
-                {section.showTitle === true && (
+              {/* Title + marks row is skipped entirely (not just visually
+                  hidden) when the section title is off — so a teacher who
+                  doesn't want visible sections gets zero extra space and no
+                  stray marks badge, not just an invisible title. */}
+              {section.showTitle === true && (
+                <div className="mb-2 flex items-center gap-2.5">
                   <div className="flex-1">
                     <EditableLine
                       as="h3"
@@ -543,17 +547,17 @@ export function A4Preview({ paper, pageRef, activeSet = '', showAnswerKey = fals
                       placeholder={`Section ${sectionLetter(sIdx)}`}
                     />
                   </div>
-                )}
-                <span className="ml-auto flex shrink-0 items-center">
-                  <MarksBadge
-                    value={obtainableMarks}
-                    position={marksPosition}
-                    visible={sectionShowMarks}
-                    onToggle={() => updateSection(paper.id, section.id, { showMarks: !sectionShowMarks })}
-                    t={t}
-                  />
-                </span>
-              </div>
+                  <span className="ml-auto flex shrink-0 items-center">
+                    <MarksBadge
+                      value={obtainableMarks}
+                      position={marksPosition}
+                      visible={sectionShowMarks}
+                      onToggle={() => updateSection(paper.id, section.id, { showMarks: !sectionShowMarks })}
+                      t={t}
+                    />
+                  </span>
+                </div>
+              )}
               {section.instruction && (
                 <div className="mb-3">
                   <EditableLine

@@ -143,10 +143,14 @@ export const FONT_FAMILIES = [
 
 // SRS 51 — special symbol palette, grouped by subject.
 export const SYMBOL_GROUPS = [
-  { label: 'Math', symbols: ['√', '±', '×', '÷', '∑', '∫', '∞', '≤', '≥', '≠', '≈', 'π', '°'] },
-  { label: 'Physics', symbols: ['Ω', 'θ', 'λ', 'μ', 'Δ', '→', 'α', 'β', 'γ', '∝', '⊥', '∥'] },
-  { label: 'Chemistry', symbols: ['₂', '₃', '₄', '₆', '₁₂', '⁺', '⁻', '⇌', '→', '·H₂O'] },
-  { label: 'Super/Subscript', symbols: ['x²', 'x³', 'xⁿ', 'H₂O', 'CO₂', 'a₁', 'aⁿ'] },
+  { label: 'Math', symbols: ['√', '∛', '∜', '±', '×', '÷', '∑', '∏', '∫', '∮', '∞', '≤', '≥', '≠', '≈', '≡', '∝', 'π', '°', '∆', '∂', '∇', '%', '‰'] },
+  { label: 'Sets & Logic', symbols: ['∈', '∉', '⊂', '⊆', '⊄', '∪', '∩', '∅', '∀', '∃', '¬', '∧', '∨', '⇒', '⇔', '∴', '∵'] },
+  { label: 'Greek (lower)', symbols: ['α', 'β', 'γ', 'δ', 'ε', 'ζ', 'η', 'θ', 'λ', 'μ', 'ν', 'ξ', 'π', 'ρ', 'σ', 'τ', 'φ', 'χ', 'ψ', 'ω'] },
+  { label: 'Greek (upper)', symbols: ['Γ', 'Δ', 'Θ', 'Λ', 'Ξ', 'Π', 'Σ', 'Φ', 'Ψ', 'Ω'] },
+  { label: 'Physics', symbols: ['Ω', 'θ', 'λ', 'μ', 'Δ', '→', '←', '↔', '⇌', 'α', 'β', 'γ', '∝', '⊥', '∥', 'ħ', 'ε₀', 'μ₀', '°C', '°F', 'Å'] },
+  { label: 'Chemistry — reactions', symbols: ['→', '⇌', '⇋', '⇄', '↔', 'Δ', '↑', '↓', '·', '(s)', '(l)', '(g)', '(aq)', '(cat.)'] },
+  { label: 'Chemistry — formulas', symbols: ['H₂O', 'CO₂', 'O₂', 'H₂', 'N₂', 'NH₃', 'CH₄', 'H₂SO₄', 'NaOH', 'CaCO₃', '⁺', '⁻', '²⁺', '²⁻'] },
+  { label: 'Ready-made super/sub', symbols: ['x²', 'x³', 'xⁿ', 'x₁', 'x₂', 'aⁿ', 'H₂O'] },
 ]
 
 export const CLASS_OPTIONS = [
