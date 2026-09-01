@@ -53,6 +53,11 @@ export const useAppStore = create(
       },
       logout: () => set({ isAuthenticated: false, teacher: null, activePaperId: null }),
 
+      // Feature — one-time "how this works" intro shown only the very first
+      // time the app is opened (persisted so it never shows again after).
+      hasSeenIntro: false,
+      dismissIntro: () => set({ hasSeenIntro: true }),
+
       // Feature 5 — profile edit (school name / address / name), editable from Settings.
       updateTeacherProfile: (patch) => {
         set((state) => ({ teacher: { ...(state.teacher || {}), ...patch } }))
@@ -545,6 +550,7 @@ export const useAppStore = create(
       name: 'papercraft-storage',
       partialize: (state) => ({
         isAuthenticated: state.isAuthenticated,
+        hasSeenIntro: state.hasSeenIntro,
         teacher: state.teacher,
         theme: state.theme,
         language: state.language,

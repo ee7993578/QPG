@@ -1,8 +1,8 @@
-import React, { useMemo, useRef } from 'react'
-import { EyeOff } from 'lucide-react'
+import React, { useMemo, useRef, useState } from 'react'
+import { EyeOff, AlignLeft, AlignCenter, AlignRight } from 'lucide-react'
 import { sectionLetter, formatDate, formatDuration, computeSectionMarks, computeGroupMarks, buildNumbering, formatMarks, questionEffectiveMarks, orderedQuestionsForSet, seedForSet, classSectionLabel, resolveSubject } from '../../lib/utils'
 import { RichText } from '../../lib/richText'
-import { GROUP_MODES, PAPER_SIZES } from '../../data/mockData'
+import { GROUP_MODES, PAPER_SIZES, nextAlign } from '../../data/mockData'
 import { EditableLine } from './EditableLine'
 import { useAppStore } from '../../store/useAppStore'
 import { useTranslate } from '../../i18n'
@@ -115,9 +115,35 @@ const RESIZE_HANDLES = [
   { key: 'w', cls: 'left-[-4px] top-1/2 -translate-y-1/2 cursor-ew-resize' },
 ]
 
+const IMG_ALIGN_ICON = { left: AlignLeft, center: AlignCenter, right: AlignRight }
+
 function QuestionImage({ image, onResize, t }) {
   const wrapRef = useRef(null)
+  // Local override while actively dragging a handle — updating the store
+  // (which deep-clones the whole paper + pushes an undo snapshot) on every
+  // single mousemove event was the reason the handles "showed but didn't
+  // work": dozens of heavy store writes per second made the drag effectively
+  // freeze. Now we track the live size purely in local state and only
+  // commit one store update on mouseup.
+  const [dragSize, setDragSize] = useState(null) // { width, height } | null
+  const [toolbar, setToolbar] = useState(false)
+
+  React.useEffect(() => {
+    if (!toolbar) return
+    const onDocClick = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setToolbar(false)
+    }
+    document.addEventListener('mousedown', onDocClick)
+    return () => document.removeEventListener('mousedown', onDocClick)
+  }, [toolbar])
+
   if (!image?.url) return null
+
+  const align = image.align || 'left'
+  const marginStyle =
+    align === 'center' ? { marginLeft: 'auto', marginRight: 'auto' } :
+    align === 'right' ? { marginLeft: 'auto', marginRight: 0 } :
+    { marginLeft: 0, marginRight: 'auto' }
 
   const startDrag = (handle) => (e) => {
     e.preventDefault()
@@ -128,6 +154,7 @@ function QuestionImage({ image, onResize, t }) {
     const startHeightPx = image.height || imgEl?.clientHeight || 140
     const startX = e.clientX
     const startY = e.clientY
+    let latest = null
 
     const onMove = (ev) => {
       let widthPx = startWidthPx
@@ -141,25 +168,54 @@ function QuestionImage({ image, onResize, t }) {
       widthPx = Math.max(40, Math.min(parentWidth, widthPx))
       heightPx = Math.max(30, Math.min(600, heightPx))
       const widthPct = Math.max(10, Math.min(100, Math.round((widthPx / parentWidth) * 100)))
-      onResize({ width: widthPct, height: Math.round(heightPx) })
+      latest = { width: widthPct, height: Math.round(heightPx) }
+      setDragSize(latest)
     }
     const onUp = () => {
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup', onUp)
+      if (latest) onResize(latest)
+      setDragSize(null)
     }
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
   }
 
+  const effectiveWidth = dragSize?.width ?? image.width ?? 50
+  const effectiveHeight = dragSize ? dragSize.height : image.height
+
+  // Feature (matches text lines) — tap/click the image itself to open a
+  // small "Move" toolbar that cycles left/center/right, same as EditableLine.
+  const openAlignToolbar = (e) => {
+    if (e.target.closest?.('[data-resize-handle]')) return
+    setToolbar((v) => !v)
+  }
+
+  const AlignIcon = IMG_ALIGN_ICON[align] || AlignLeft
+
   return (
-    <div ref={wrapRef} className="group/qimg relative my-1.5" style={{ width: `${image.width ?? 50}%` }}>
+    <div ref={wrapRef} className="group/qimg relative my-1.5" style={{ width: `${effectiveWidth}%`, ...marginStyle }}>
       <img
         src={image.url}
         alt={image.caption || 'question figure'}
-        className="w-full rounded border border-ink-200 dark:border-ink-700"
-        style={{ height: image.height ? `${image.height}px` : 'auto', objectFit: image.height ? 'fill' : 'contain' }}
+        onClick={onResize ? openAlignToolbar : undefined}
+        className={`w-full rounded border border-ink-200 dark:border-ink-700 ${onResize ? 'cursor-pointer' : ''}`}
+        style={{ height: effectiveHeight ? `${effectiveHeight}px` : 'auto', objectFit: effectiveHeight ? 'fill' : 'contain' }}
       />
       {image.caption && <p className="mt-0.5 text-center text-[10px] italic text-ink-400">{image.caption}</p>}
+      {onResize && toolbar && (
+        <div
+          className="no-print absolute left-0 top-full z-20 mt-1 flex items-center gap-0.5 rounded-lg border border-ink-200 bg-white p-1 shadow-lg dark:border-ink-700 dark:bg-ink-800"
+          onMouseDown={(e) => e.preventDefault()}
+        >
+          <button
+            type="button"
+            onClick={() => { onResize({ align: nextAlign(align) }); setToolbar(false) }}
+            title={t ? t('common_moveText') : 'Move image'}
+            className="rounded p-1.5 text-ink-500 hover:bg-ink-100 dark:text-ink-300 dark:hover:bg-ink-700"
+          ><AlignIcon className="h-3.5 w-3.5" /></button>
+        </div>
+      )}
       {onResize && (
         <div
           className="no-print pointer-events-none absolute inset-0 opacity-0 transition-opacity group-hover/qimg:opacity-100"
@@ -168,6 +224,7 @@ function QuestionImage({ image, onResize, t }) {
           {RESIZE_HANDLES.map(({ key, cls }) => (
             <span
               key={key}
+              data-resize-handle
               onMouseDown={startDrag(key)}
               className={`pointer-events-auto absolute h-2.5 w-2.5 rounded-sm border border-white bg-gold-500 shadow ${cls}`}
             />

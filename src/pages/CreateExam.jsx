@@ -27,7 +27,10 @@ export default function CreateExam() {
   const addQuestionGroup = useAppStore((s) => s.addQuestionGroup)
   const t = useTranslate()
 
-  const [template, setTemplate] = useState(null) // null = still on the picker screen
+  // Straight to the blank wizard — no "pick a starting point" screen. The
+  // quick-start templates (QUICK_START_TEMPLATES) still exist in the data
+  // layer for a future "Insert template" action inside the builder itself.
+  const [template, setTemplate] = useState('blank')
   const [step, setStep] = useState(0) // 0,1,2 → STEPS
 
   // Feature 5 — school name & address are pulled from the teacher's profile
@@ -78,7 +81,7 @@ export default function CreateExam() {
   }
   const goBack = () => {
     if (step > 0) setStep((s) => s - 1)
-    else setTemplate(null)
+    else navigate('/dashboard')
   }
 
   const submit = () => {

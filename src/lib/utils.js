@@ -272,3 +272,88 @@ export function computePaperMarks(paper) {
     { providedMarks: 0, obtainableMarks: 0 }
   )
 }
+
+// ---------------- Image compression ----------------
+// Any image a teacher uploads (question figures, header logo, option
+// images) is compressed client-side so the paper's saved JSON stays small
+// and fast to autosave/export, no matter how large the original photo is.
+const IMAGE_MAX_KB = 200
+
+function loadImageEl(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => resolve(img)
+    img.onerror = reject
+    img.src = dataUrl
+  })
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result))
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
+function dataUrlSizeKB(dataUrl) {
+  // Rough but reliable byte estimate for a base64 data URL.
+  const base64 = dataUrl.slice(dataUrl.indexOf(',') + 1)
+  return (base64.length * 0.75) / 1024
+}
+
+/**
+ * Compresses an uploaded image file down to (roughly) `maxKB`, no matter
+ * how big or small the original is. Downscales dimensions and/or lowers
+ * JPEG quality in steps until it fits, always returning the smallest
+ * dataURL it managed to produce even if the exact target isn't reachable
+ * (e.g. a huge, very detailed image).
+ */
+export async function compressImageFile(file, maxKB = IMAGE_MAX_KB) {
+  if (!file) return null
+  // Non-photographic images (SVG/GIF) don't benefit from re-encoding —
+  // pass them through untouched; SVGs especially are already tiny/vector.
+  if (file.type === 'image/svg+xml') return readFileAsDataUrl(file)
+
+  const original = await readFileAsDataUrl(file)
+  if (dataUrlSizeKB(original) <= maxKB) return original
+
+  const img = await loadImageEl(original)
+  let width = img.naturalWidth || img.width
+  let height = img.naturalHeight || img.height
+  const canvas = document.createElement('canvas')
+  const ctx = canvas.getContext('2d')
+
+  let best = original
+  let quality = 0.85
+  const MAX_DIMENSION = 1600
+
+  // First pass: cap absurdly large dimensions before iterating quality.
+  if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
+    const scale = MAX_DIMENSION / Math.max(width, height)
+    width = Math.round(width * scale)
+    height = Math.round(height * scale)
+  }
+
+  for (let attempt = 0; attempt < 8; attempt++) {
+    canvas.width = width
+    canvas.height = height
+    ctx.clearRect(0, 0, width, height)
+    ctx.drawImage(img, 0, 0, width, height)
+    const candidate = canvas.toDataURL('image/jpeg', quality)
+    best = candidate
+    if (dataUrlSizeKB(candidate) <= maxKB) return candidate
+
+    // Still too big — lower quality first, then shrink dimensions once
+    // quality bottoms out, alternating gives a smaller file each round.
+    if (quality > 0.4) {
+      quality -= 0.15
+    } else {
+      width = Math.round(width * 0.8)
+      height = Math.round(height * 0.8)
+      quality = 0.6
+    }
+  }
+  return best // best effort — smallest version we could produce
+}

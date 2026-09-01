@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react'
 import {
   Copy, Trash2, ChevronUp, ChevronDown, GripVertical, Image as ImageIcon,
-  PenSquare, ListPlus, Pin, PinOff, Languages,
+  PenSquare, ListPlus, Pin, PinOff, Languages, Maximize2,
 } from 'lucide-react'
 import { Textarea, Input, Label } from '../ui/Input'
 import { ImageUploadField } from '../ui/ImageUploadField'
@@ -12,6 +12,7 @@ import { SubQuestionsEditor } from './SubQuestionsEditor'
 import { OptionsEditor } from './OptionsEditor'
 import { MatchPairsEditor } from './MatchPairsEditor'
 import { TableGridEditor } from './TableGridEditor'
+import { FullscreenTextEditor } from './FullscreenTextEditor'
 import { OPTION_BASED_TYPES } from '../../data/mockData'
 import { useTranslate } from '../../i18n'
 
@@ -23,6 +24,7 @@ export function QuestionInput({ paperId, sectionId, groupId, group, question, in
   const moveQuestion = useAppStore((s) => s.moveQuestion)
 
   const textRef = useRef(null)
+  const [expanded, setExpanded] = useState(false)
   const [showImage, setShowImage] = useState(!!question.image?.url)
   const [showAnswerSpace, setShowAnswerSpace] = useState((question.answerSpace?.type || 'none') !== 'none')
   const [showSubParts, setShowSubParts] = useState((question.subQuestions || []).length > 0)
@@ -85,7 +87,7 @@ export function QuestionInput({ paperId, sectionId, groupId, group, question, in
         )}
 
         {!isAssertionReason && !isMatch && !isTable && (
-          <div className="space-y-1">
+          <div className="relative space-y-1">
             <Textarea
               ref={textRef}
               rows={2}
@@ -94,7 +96,21 @@ export function QuestionInput({ paperId, sectionId, groupId, group, question, in
               value={question.text}
               onChange={(e) => set({ text: e.target.value })}
               onPaste={handlePaste}
-              className={question.dir === 'rtl' ? 'text-right' : ''}
+              className={`pr-8 ${question.dir === 'rtl' ? 'text-right' : ''}`}
+            />
+            <button
+              type="button"
+              onClick={() => setExpanded(true)}
+              title="Expand — edit full question with formatting tools"
+              className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded text-ink-300 hover:bg-ink-100 hover:text-ink-600 dark:hover:bg-ink-700 dark:hover:text-ink-200"
+            ><Maximize2 className="h-3.5 w-3.5" /></button>
+            <FullscreenTextEditor
+              open={expanded}
+              onClose={() => setExpanded(false)}
+              value={question.text}
+              onChange={(text) => set({ text })}
+              placeholder={t('q_typeHere')}
+              dir={question.dir}
             />
           </div>
         )}
