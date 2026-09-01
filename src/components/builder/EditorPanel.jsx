@@ -53,7 +53,8 @@ function HeaderInstructions({ paper }) {
 
 export function EditorPanel({ paper }) {
   const [editingMeta, setEditingMeta] = useState(false)
-  const [showDetails, setShowDetails] = useState(true)
+  // Auto-hidden by default — the teacher can tap "Show" to reveal exam details.
+  const [showDetails, setShowDetails] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const addSection = useAppStore((s) => s.addSection)
   const updatePaperMeta = useAppStore((s) => s.updatePaperMeta)

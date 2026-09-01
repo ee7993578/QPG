@@ -1,4 +1,5 @@
-import React, { useMemo } from 'react'
+import React, { useMemo, useRef } from 'react'
+import { EyeOff } from 'lucide-react'
 import { sectionLetter, formatDate, formatDuration, computeSectionMarks, computeGroupMarks, buildNumbering, formatMarks, questionEffectiveMarks, orderedQuestionsForSet, seedForSet, classSectionLabel, resolveSubject } from '../../lib/utils'
 import { RichText } from '../../lib/richText'
 import { GROUP_MODES, PAPER_SIZES } from '../../data/mockData'
@@ -32,6 +33,48 @@ function modeInstruction(group) {
   return base
 }
 
+/**
+ * Click any marks figure in the live preview to hide it; while hidden, a
+ * small faint "eye-off" mark takes its place so it can be clicked again to
+ * bring the marks back. The faint placeholder never prints/exports
+ * (no-print) — only the marks text itself does, and only while visible.
+ */
+function MarksBadge({ value, position, visible, onToggle, t }) {
+  if (!onToggle) {
+    return <span className="shrink-0 font-mono text-xs text-ink-400">{formatMarks(position, value)}</span>
+  }
+  const activate = (e) => { e.stopPropagation(); onToggle() }
+  const onKeyDown = (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(e) }
+  }
+  if (visible) {
+    return (
+      <span
+        role="button"
+        tabIndex={0}
+        onClick={activate}
+        onKeyDown={onKeyDown}
+        title={t('preview_clickHideMarks')}
+        className="shrink-0 cursor-pointer rounded px-0.5 font-mono text-xs text-ink-400 transition-colors hover:bg-gold-100/60 print:pointer-events-none dark:hover:bg-gold-400/10"
+      >
+        {formatMarks(position, value)}
+      </span>
+    )
+  }
+  return (
+    <span
+      role="button"
+      tabIndex={0}
+      onClick={activate}
+      onKeyDown={onKeyDown}
+      title={t('preview_clickShowMarks')}
+      className="no-print flex shrink-0 cursor-pointer items-center rounded border border-dashed border-ink-300 p-0.5 text-ink-300 hover:border-ink-400 hover:text-ink-500 dark:border-ink-700 dark:text-ink-600"
+    >
+      <EyeOff className="h-3 w-3" />
+    </span>
+  )
+}
+
 function AnswerSpaceBlock({ space }) {
   if (!space || space.type === 'none') return null
   if (space.type === 'drawing') {
@@ -58,12 +101,79 @@ function AnswerSpaceBlock({ space }) {
   )
 }
 
-function QuestionImage({ image }) {
+// Corner + side handles so the image can be stretched from any edge, per the
+// standard "resize box" pattern. Handles are no-print — only the resulting
+// image size is reflected in the export.
+const RESIZE_HANDLES = [
+  { key: 'nw', cls: 'left-[-4px] top-[-4px] cursor-nwse-resize' },
+  { key: 'n', cls: 'left-1/2 top-[-4px] -translate-x-1/2 cursor-ns-resize' },
+  { key: 'ne', cls: 'right-[-4px] top-[-4px] cursor-nesw-resize' },
+  { key: 'e', cls: 'right-[-4px] top-1/2 -translate-y-1/2 cursor-ew-resize' },
+  { key: 'se', cls: 'right-[-4px] bottom-[-4px] cursor-nwse-resize' },
+  { key: 's', cls: 'left-1/2 bottom-[-4px] -translate-x-1/2 cursor-ns-resize' },
+  { key: 'sw', cls: 'left-[-4px] bottom-[-4px] cursor-nesw-resize' },
+  { key: 'w', cls: 'left-[-4px] top-1/2 -translate-y-1/2 cursor-ew-resize' },
+]
+
+function QuestionImage({ image, onResize, t }) {
+  const wrapRef = useRef(null)
   if (!image?.url) return null
+
+  const startDrag = (handle) => (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const parentWidth = wrapRef.current?.parentElement?.clientWidth || 400
+    const imgEl = wrapRef.current?.querySelector('img')
+    const startWidthPx = ((image.width ?? 50) / 100) * parentWidth
+    const startHeightPx = image.height || imgEl?.clientHeight || 140
+    const startX = e.clientX
+    const startY = e.clientY
+
+    const onMove = (ev) => {
+      let widthPx = startWidthPx
+      let heightPx = startHeightPx
+      const dx = ev.clientX - startX
+      const dy = ev.clientY - startY
+      if (handle.includes('e')) widthPx = startWidthPx + dx
+      if (handle.includes('w')) widthPx = startWidthPx - dx
+      if (handle.includes('s')) heightPx = startHeightPx + dy
+      if (handle.includes('n')) heightPx = startHeightPx - dy
+      widthPx = Math.max(40, Math.min(parentWidth, widthPx))
+      heightPx = Math.max(30, Math.min(600, heightPx))
+      const widthPct = Math.max(10, Math.min(100, Math.round((widthPx / parentWidth) * 100)))
+      onResize({ width: widthPct, height: Math.round(heightPx) })
+    }
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
+
   return (
-    <div className="my-1.5" style={{ width: `${image.width ?? 50}%` }}>
-      <img src={image.url} alt={image.caption || 'question figure'} className="w-full rounded border border-ink-200 object-contain dark:border-ink-700" />
+    <div ref={wrapRef} className="group/qimg relative my-1.5" style={{ width: `${image.width ?? 50}%` }}>
+      <img
+        src={image.url}
+        alt={image.caption || 'question figure'}
+        className="w-full rounded border border-ink-200 dark:border-ink-700"
+        style={{ height: image.height ? `${image.height}px` : 'auto', objectFit: image.height ? 'fill' : 'contain' }}
+      />
       {image.caption && <p className="mt-0.5 text-center text-[10px] italic text-ink-400">{image.caption}</p>}
+      {onResize && (
+        <div
+          className="no-print pointer-events-none absolute inset-0 opacity-0 transition-opacity group-hover/qimg:opacity-100"
+          title={t ? t('preview_dragResize') : undefined}
+        >
+          {RESIZE_HANDLES.map(({ key, cls }) => (
+            <span
+              key={key}
+              onMouseDown={startDrag(key)}
+              className={`pointer-events-auto absolute h-2.5 w-2.5 rounded-sm border border-white bg-gold-500 shadow ${cls}`}
+            />
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -151,14 +261,30 @@ function SubQuestionsBlock({ subQuestions, marksPosition }) {
   )
 }
 
-function QuestionBody({ question, group, marksPosition, showAnswerKey, onTextChange, onAlignChange }) {
+function QuestionBody({ question, group, marksPosition, showAnswerKey, onTextChange, onAlignChange, onImageResize, onAssertionChange, onAssertionAlign, onReasonChange, onReasonAlign, t }) {
   const type = group.questionType
   if (type === 'Assertion-Reason') {
     return (
       <div className="flex-1 space-y-1">
-        <p className="text-[13.5px] text-ink-800">{question.assertion ? <RichText text={question.assertion} /> : <span className="italic text-ink-300">Assertion (A): …</span>}</p>
-        <p className="text-[13.5px] text-ink-800">{question.reason ? <RichText text={question.reason} /> : <span className="italic text-ink-300">Reason (R): …</span>}</p>
-        <QuestionImage image={question.image} />
+        <EditableLine
+          as="p"
+          text={question.assertion}
+          align={question.assertionAlign || 'left'}
+          onAlign={onAssertionAlign}
+          onText={onAssertionChange}
+          className="text-[13.5px] text-ink-800"
+          placeholder="Assertion (A): …"
+        />
+        <EditableLine
+          as="p"
+          text={question.reason}
+          align={question.reasonAlign || 'left'}
+          onAlign={onReasonAlign}
+          onText={onReasonChange}
+          className="text-[13.5px] text-ink-800"
+          placeholder="Reason (R): …"
+        />
+        <QuestionImage image={question.image} onResize={onImageResize} t={t} />
         <OptionsBlock options={question.options} layout={group.optionsLayout} correctOptionId={question.correctOptionId} showAnswerKey={showAnswerKey} />
       </div>
     )
@@ -190,7 +316,7 @@ function QuestionBody({ question, group, marksPosition, showAnswerKey, onTextCha
         placeholder="Untitled question…"
         dir={question.dir === 'rtl' ? 'rtl' : 'ltr'}
       />
-      <QuestionImage image={question.image} />
+      <QuestionImage image={question.image} onResize={onImageResize} t={t} />
       <OptionsBlock options={question.options} layout={group.optionsLayout} correctOptionId={question.correctOptionId} showAnswerKey={showAnswerKey} />
       <SubQuestionsBlock subQuestions={question.subQuestions} marksPosition={marksPosition} />
       <AnswerSpaceBlock space={question.answerSpace} />
@@ -201,6 +327,7 @@ function QuestionBody({ question, group, marksPosition, showAnswerKey, onTextCha
 export function A4Preview({ paper, pageRef, activeSet = '', showAnswerKey = false }) {
   const t = useTranslate()
   const updateSection = useAppStore((s) => s.updateSection)
+  const updateQuestionGroup = useAppStore((s) => s.updateQuestionGroup)
   const updateQuestion = useAppStore((s) => s.updateQuestion)
   const numbering = useMemo(() => buildNumbering(paper, activeSet), [paper, activeSet])
   const examTitle = paper.examType === 'Custom' ? paper.customExamName : paper.examType
@@ -304,12 +431,10 @@ export function A4Preview({ paper, pageRef, activeSet = '', showAnswerKey = fals
         {paper.sections.map((section, sIdx) => {
           const { obtainableMarks } = computeSectionMarks(section)
           const noticeBox = section.noticeBox
+          const sectionShowMarks = section.showMarks !== false
           return (
             <div key={section.id}>
               <div className="mb-2 flex items-center gap-2.5">
-                <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 font-display text-sm font-bold ${tpl.accent}`}>
-                  {sectionLetter(sIdx)}
-                </span>
                 {section.showTitle === true && (
                   <div className="flex-1">
                     <EditableLine
@@ -323,16 +448,38 @@ export function A4Preview({ paper, pageRef, activeSet = '', showAnswerKey = fals
                     />
                   </div>
                 )}
-                {section.showMarks !== false && (
-                  <span className="ml-auto shrink-0 text-xs font-mono text-ink-400">{formatMarks(marksPosition, obtainableMarks)}</span>
-                )}
+                <span className="ml-auto flex shrink-0 items-center">
+                  <MarksBadge
+                    value={obtainableMarks}
+                    position={marksPosition}
+                    visible={sectionShowMarks}
+                    onToggle={() => updateSection(paper.id, section.id, { showMarks: !sectionShowMarks })}
+                    t={t}
+                  />
+                </span>
               </div>
               {section.instruction && (
-                <p className="mb-3 text-[12.5px] italic text-ink-500">{section.instruction}</p>
+                <div className="mb-3">
+                  <EditableLine
+                    as="p"
+                    text={section.instruction}
+                    align={section.instructionAlign || 'left'}
+                    onAlign={(align) => updateSection(paper.id, section.id, { instructionAlign: align })}
+                    onText={(instruction) => updateSection(paper.id, section.id, { instruction })}
+                    className="text-[12.5px] italic text-ink-500"
+                  />
+                </div>
               )}
               {noticeBox?.enabled && noticeBox.text && (
                 <div className="mb-3 rounded border border-ink-300 bg-ink-50/70 px-3 py-2 text-[12px] font-medium text-ink-700 dark:border-ink-700 dark:bg-ink-800/50 dark:text-ink-200">
-                  {noticeBox.text}
+                  <EditableLine
+                    as="p"
+                    text={noticeBox.text}
+                    align={noticeBox.align || 'left'}
+                    onAlign={(align) => updateSection(paper.id, section.id, { noticeBox: { ...noticeBox, align } })}
+                    onText={(text) => updateSection(paper.id, section.id, { noticeBox: { ...noticeBox, text } })}
+                    className="text-[12px] font-medium text-ink-700 dark:text-ink-200"
+                  />
                 </div>
               )}
 
@@ -348,30 +495,76 @@ export function A4Preview({ paper, pageRef, activeSet = '', showAnswerKey = fals
                     )}
                     {/* Feature 10 — custom type label shown instead of the picked type, when set.
                         Feature 8 — question-type total marks, same hide/show toggle as a Section's total. */}
-                    {(group.customTypeName || group.showMarks !== false) && (
-                      <div className="mb-1 flex items-center justify-between gap-2">
-                        <p className="text-[11px] font-semibold italic text-ink-400">{group.customTypeName}</p>
-                        {group.showMarks !== false && (
-                          <span className="shrink-0 text-xs font-mono text-ink-400">{formatMarks(marksPosition, computeGroupMarks(group).obtainableMarks)}</span>
-                        )}
+                    {(() => {
+                      const groupShowMarks = group.showMarks !== false
+                      return (
+                        <div className="mb-1 flex items-center justify-between gap-2">
+                          <div className="flex-1">
+                            <EditableLine
+                              as="p"
+                              text={group.customTypeName}
+                              align={group.customTypeNameAlign || 'left'}
+                              onAlign={(align) => updateQuestionGroup(paper.id, section.id, group.id, { customTypeNameAlign: align })}
+                              onText={(customTypeName) => updateQuestionGroup(paper.id, section.id, group.id, { customTypeName })}
+                              className="text-[11px] font-semibold italic text-ink-400"
+                              placeholder={group.questionType}
+                            />
+                          </div>
+                          <MarksBadge
+                            value={computeGroupMarks(group).obtainableMarks}
+                            position={marksPosition}
+                            visible={groupShowMarks}
+                            onToggle={() => updateQuestionGroup(paper.id, section.id, group.id, { showMarks: !groupShowMarks })}
+                            t={t}
+                          />
+                        </div>
+                      )
+                    })()}
+                    {group.mode === 'normal' && !group.negativeMarks ? (
+                      <div className="mb-1.5">
+                        <EditableLine
+                          as="p"
+                          text={group.instruction}
+                          align={group.instructionAlign || 'left'}
+                          onAlign={(align) => updateQuestionGroup(paper.id, section.id, group.id, { instructionAlign: align })}
+                          onText={(instruction) => updateQuestionGroup(paper.id, section.id, group.id, { instruction })}
+                          className="text-[12px] italic text-ink-500"
+                        />
                       </div>
-                    )}
-                    {(group.instruction || group.mode !== 'normal' || group.negativeMarks) && (
-                      <p className="mb-1.5 text-[12px] italic text-ink-500">{modeInstruction(group)}</p>
+                    ) : (
+                      (group.instruction || group.mode !== 'normal' || group.negativeMarks) && (
+                        <p className="mb-1.5 text-[12px] italic text-ink-500">{modeInstruction(group)}</p>
+                      )
                     )}
                     {group.questionType === 'Case Study' && group.passage && (
                       <div className="mb-2 rounded border border-ink-200 bg-ink-50/60 p-2.5 dark:border-ink-700 dark:bg-ink-800/40">
                         <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-gold-600">Case Study</p>
-                        <p className="text-[12.5px] italic text-ink-600 dark:text-ink-300">{group.passage}</p>
+                        <EditableLine
+                          as="p"
+                          text={group.passage}
+                          align={group.passageAlign || 'left'}
+                          onAlign={(align) => updateQuestionGroup(paper.id, section.id, group.id, { passageAlign: align })}
+                          onText={(passage) => updateQuestionGroup(paper.id, section.id, group.id, { passage })}
+                          className="text-[12.5px] italic text-ink-600 dark:text-ink-300"
+                        />
                       </div>
                     )}
                     {group.questionType !== 'Case Study' && (group.hasPassage || group.passage) && group.passage && (
                       <div className="mb-2 rounded border border-ink-200 bg-ink-50/60 p-2.5 dark:border-ink-700 dark:bg-ink-800/40">
-                        <p className="text-[12.5px] italic text-ink-600 dark:text-ink-300">{group.passage}</p>
+                        <EditableLine
+                          as="p"
+                          text={group.passage}
+                          align={group.passageAlign || 'left'}
+                          onAlign={(align) => updateQuestionGroup(paper.id, section.id, group.id, { passageAlign: align })}
+                          onText={(passage) => updateQuestionGroup(paper.id, section.id, group.id, { passage })}
+                          className="text-[12.5px] italic text-ink-600 dark:text-ink-300"
+                        />
                       </div>
                     )}
                     <ol className="space-y-2">
-                      {group.mode === 'or' ? (
+                      {group.mode === 'or' ? (() => {
+                        const orShowMarks = group.showMarks !== false
+                        return (
                         <li className="flex gap-2 text-[13.5px] leading-relaxed text-ink-800">
                           <span className="font-semibold shrink-0">{numbering.get(group.questions[0]?.id)?.display}</span>
                           <div className="flex-1 space-y-1.5">
@@ -379,9 +572,14 @@ export function A4Preview({ paper, pageRef, activeSet = '', showAnswerKey = fals
                               <div key={question.id} className="flex gap-1.5" style={question.keepTogether ? { breakInside: 'avoid' } : undefined}>
                                 <span className="font-semibold shrink-0">({String.fromCharCode(65 + i)})</span>
                                 <QuestionBody
-                                  question={question} group={group} marksPosition={marksPosition} showAnswerKey={showAnswerKey}
+                                  question={question} group={group} marksPosition={marksPosition} showAnswerKey={showAnswerKey} t={t}
                                   onTextChange={(text) => updateQuestion(paper.id, section.id, group.id, question.id, { text })}
                                   onAlignChange={(align) => updateQuestion(paper.id, section.id, group.id, question.id, { align })}
+                                  onImageResize={(patch) => updateQuestion(paper.id, section.id, group.id, question.id, { image: { ...(question.image || {}), ...patch } })}
+                                  onAssertionChange={(assertion) => updateQuestion(paper.id, section.id, group.id, question.id, { assertion })}
+                                  onAssertionAlign={(assertionAlign) => updateQuestion(paper.id, section.id, group.id, question.id, { assertionAlign })}
+                                  onReasonChange={(reason) => updateQuestion(paper.id, section.id, group.id, question.id, { reason })}
+                                  onReasonAlign={(reasonAlign) => updateQuestion(paper.id, section.id, group.id, question.id, { reasonAlign })}
                                 />
                                 {i < group.questions.length - 1 && (
                                   <span className="ml-1 shrink-0 font-display italic text-gold-600">OR</span>
@@ -389,10 +587,19 @@ export function A4Preview({ paper, pageRef, activeSet = '', showAnswerKey = fals
                               </div>
                             ))}
                           </div>
-                          <span className="shrink-0 font-mono text-xs text-ink-400">{formatMarks(marksPosition, group.marksPerQuestion)}</span>
+                          <MarksBadge
+                            value={group.marksPerQuestion}
+                            position={marksPosition}
+                            visible={orShowMarks}
+                            onToggle={() => updateQuestionGroup(paper.id, section.id, group.id, { showMarks: !orShowMarks })}
+                            t={t}
+                          />
                         </li>
-                      ) : (
-                        orderedQuestions(group).map((question) => (
+                        )
+                      })() : (
+                        orderedQuestions(group).map((question) => {
+                          const qShowMarks = question.showMarks !== false
+                          return (
                           <li
                             key={question.id}
                             className="flex gap-2 text-[13.5px] leading-relaxed text-ink-800"
@@ -400,13 +607,25 @@ export function A4Preview({ paper, pageRef, activeSet = '', showAnswerKey = fals
                           >
                             <span className="font-semibold shrink-0">{numbering.get(question.id)?.display}</span>
                             <QuestionBody
-                              question={question} group={group} marksPosition={marksPosition} showAnswerKey={showAnswerKey}
+                              question={question} group={group} marksPosition={marksPosition} showAnswerKey={showAnswerKey} t={t}
                               onTextChange={(text) => updateQuestion(paper.id, section.id, group.id, question.id, { text })}
                               onAlignChange={(align) => updateQuestion(paper.id, section.id, group.id, question.id, { align })}
+                              onImageResize={(patch) => updateQuestion(paper.id, section.id, group.id, question.id, { image: { ...(question.image || {}), ...patch } })}
+                              onAssertionChange={(assertion) => updateQuestion(paper.id, section.id, group.id, question.id, { assertion })}
+                              onAssertionAlign={(assertionAlign) => updateQuestion(paper.id, section.id, group.id, question.id, { assertionAlign })}
+                              onReasonChange={(reason) => updateQuestion(paper.id, section.id, group.id, question.id, { reason })}
+                              onReasonAlign={(reasonAlign) => updateQuestion(paper.id, section.id, group.id, question.id, { reasonAlign })}
                             />
-                            <span className="shrink-0 font-mono text-xs text-ink-400">{formatMarks(marksPosition, questionEffectiveMarks(question))}</span>
+                            <MarksBadge
+                              value={questionEffectiveMarks(question)}
+                              position={marksPosition}
+                              visible={qShowMarks}
+                              onToggle={() => updateQuestion(paper.id, section.id, group.id, question.id, { showMarks: !qShowMarks })}
+                              t={t}
+                            />
                           </li>
-                        ))
+                          )
+                        })
                       )}
                     </ol>
                   </div>

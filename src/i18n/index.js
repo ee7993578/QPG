@@ -189,6 +189,11 @@ export const dictionaries = {
     group_showMarks: 'Show marks',
     group_hideMarks: 'Marks hidden — click to show',
 
+    // Preview click-to-toggle marks / image resize (Feature — click marks in preview)
+    preview_clickHideMarks: 'Click to hide marks',
+    preview_clickShowMarks: 'Marks hidden — click to show',
+    preview_dragResize: 'Drag a handle to resize the image',
+
     // Question input
     q_typeHere: 'Type the question here…',
     q_addImage: 'Add image',
@@ -403,6 +408,10 @@ export const dictionaries = {
     group_insertFromBank: 'प्रश्न बैंक से डालें',
     group_showMarks: 'अंक दिखाएं',
     group_hideMarks: 'अंक छिपे हैं — दिखाने के लिए क्लिक करें',
+
+    preview_clickHideMarks: 'अंक छिपाने के लिए क्लिक करें',
+    preview_clickShowMarks: 'अंक छिपे हैं — दिखाने के लिए क्लिक करें',
+    preview_dragResize: 'चित्र का आकार बदलने के लिए हैंडल खींचें',
 
     q_typeHere: 'यहाँ प्रश्न टाइप करें…',
     q_addImage: 'चित्र जोड़ें',

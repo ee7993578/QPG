@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Plus, Trash2, ChevronUp, ChevronDown, Copy, GripVertical, AlignLeft, AlignCenter, AlignRight, SlidersHorizontal, Eye, EyeOff, X } from 'lucide-react'
+import { Plus, Trash2, ChevronUp, ChevronDown, Copy, GripVertical, AlignLeft, AlignCenter, AlignRight, SlidersHorizontal, Eye, EyeOff } from 'lucide-react'
 import { Input, Label, Textarea } from '../ui/Input'
 import { Select } from '../ui/Select'
 import { Button } from '../ui/Button'
@@ -79,9 +79,10 @@ export function SectionEditor({ paperId, section, index, total, numbering }) {
         <button
           onClick={() => updateSection(paperId, section.id, { showMarks: !showMarks })}
           title={showMarks ? t('section_hideMarks') : t('section_showMarks')}
-          className="hidden shrink-0 items-center rounded p-1.5 font-mono text-xs text-ink-400 hover:bg-ink-100 dark:hover:bg-ink-800 sm:inline-flex"
+          className="flex shrink-0 items-center gap-1 rounded p-1.5 text-xs font-mono text-ink-400 hover:bg-ink-100 dark:hover:bg-ink-800"
         >
-          {showMarks ? `${obtainableMarks} ${t('section_marks')}` : <X className="h-3.5 w-3.5" />}
+          {showMarks ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+          {obtainableMarks} {t('section_marks')}
         </button>
         <div className="flex shrink-0 items-center gap-0.5">
           <button disabled={index === 0} onClick={() => moveSection(paperId, section.id, -1)} className="rounded p-1.5 text-ink-400 hover:bg-ink-100 disabled:opacity-30 dark:hover:bg-ink-800"><ChevronUp className="h-4 w-4" /></button>
