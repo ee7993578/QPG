@@ -1,8 +1,15 @@
-import React, { useRef } from 'react'
+import React, { useEffect, useRef } from 'react'
 import { Bold, Italic, Underline, Scissors, Copy, ClipboardPaste, Check } from 'lucide-react'
 import { Dialog } from '../ui/Dialog'
 import { Button } from '../ui/Button'
+import { SymbolPalette } from './SymbolPalette'
 import { toggleMarkInRange } from '../../lib/utils'
+
+// Box grows with the question instead of always taking up half the screen —
+// small to start, expanding as more text is typed, capped so it never grows
+// past a comfortable reading height.
+const MIN_EDITOR_HEIGHT = 120 // px
+const MAX_EDITOR_HEIGHT_VH = 65 // % of viewport height
 
 const MARKS = [
   { key: 'bold', Icon: Bold, title: 'Bold' },
@@ -19,12 +26,34 @@ const MARKS = [
 export function FullscreenTextEditor({ open, onClose, value, onChange, placeholder, dir }) {
   const taRef = useRef(null)
 
+  // Auto-grow the textarea (and with it, the popup) to fit the content —
+  // starts at MIN_EDITOR_HEIGHT and expands as the question gets longer,
+  // scrolling internally once it hits the max height.
+  useEffect(() => {
+    const el = taRef.current
+    if (!el || !open) return
+    el.style.height = 'auto'
+    const maxPx = window.innerHeight * (MAX_EDITOR_HEIGHT_VH / 100)
+    el.style.height = `${Math.min(maxPx, Math.max(MIN_EDITOR_HEIGHT, el.scrollHeight))}px`
+  }, [value, open])
+
   const withSelection = (fn) => {
     const el = taRef.current
     if (!el) return
     const start = el.selectionStart
     const end = el.selectionEnd
     fn(el, start, end)
+  }
+
+  const insertSymbol = (sym) => {
+    const el = taRef.current
+    const current = value || ''
+    if (!el) { onChange(`${current}${sym}`); return }
+    const start = el.selectionStart ?? current.length
+    const end = el.selectionEnd ?? current.length
+    const next = `${current.slice(0, start)}${sym}${current.slice(end)}`
+    onChange(next)
+    requestAnimationFrame(() => { el.focus(); el.selectionStart = el.selectionEnd = start + sym.length })
   }
 
   const applyMark = (mark) => {
@@ -86,6 +115,8 @@ export function FullscreenTextEditor({ open, onClose, value, onChange, placehold
         <button type="button" title="Cut" onClick={cut} className="flex h-8 w-8 items-center justify-center rounded text-ink-500 hover:bg-ink-100 hover:text-ink-800 dark:text-ink-300 dark:hover:bg-ink-700"><Scissors className="h-4 w-4" /></button>
         <button type="button" title="Copy" onClick={copy} className="flex h-8 w-8 items-center justify-center rounded text-ink-500 hover:bg-ink-100 hover:text-ink-800 dark:text-ink-300 dark:hover:bg-ink-700"><Copy className="h-4 w-4" /></button>
         <button type="button" title="Paste" onClick={paste} className="flex h-8 w-8 items-center justify-center rounded text-ink-500 hover:bg-ink-100 hover:text-ink-800 dark:text-ink-300 dark:hover:bg-ink-700"><ClipboardPaste className="h-4 w-4" /></button>
+        <span className="mx-1 h-5 w-px bg-ink-200 dark:bg-ink-700" />
+        <SymbolPalette onInsert={insertSymbol} />
       </div>
 
       <textarea
@@ -95,7 +126,9 @@ export function FullscreenTextEditor({ open, onClose, value, onChange, placehold
         value={value || ''}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className={`h-[50vh] w-full resize-none rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm leading-relaxed text-ink-900 placeholder:text-ink-400 focus-visible:focus-ring dark:border-ink-700 dark:bg-ink-900 dark:text-ink-50 dark:placeholder:text-ink-500 ${dir === 'rtl' ? 'text-right' : ''}`}
+        rows={3}
+        style={{ minHeight: MIN_EDITOR_HEIGHT, maxHeight: `${MAX_EDITOR_HEIGHT_VH}vh` }}
+        className={`w-full resize-none overflow-y-auto rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm leading-relaxed text-ink-900 placeholder:text-ink-400 focus-visible:focus-ring dark:border-ink-700 dark:bg-ink-900 dark:text-ink-50 dark:placeholder:text-ink-500 ${dir === 'rtl' ? 'text-right' : ''}`}
       />
 
       <div className="mt-4 flex justify-end">

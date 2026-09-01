@@ -14,7 +14,7 @@ function makeBlankQuestion(marks = 1) {
     align: 'left', // Feature 7 — click-to-move alignment in preview
     keepTogether: false,
     showMarks: true, // marks for this question shown in preview by default; click the marks in preview to toggle
-    image: null, // { url, width, height, caption }
+    image: null, // { url, width, height, caption, rotate, originalUrl }
     answerSpace: { type: 'none', lines: 4, heightMm: 40 },
     subQuestions: [],
     options: [],

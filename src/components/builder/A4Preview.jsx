@@ -1,9 +1,10 @@
 import React, { useMemo, useRef, useState } from 'react'
-import { EyeOff, AlignLeft, AlignCenter, AlignRight } from 'lucide-react'
+import { EyeOff, AlignLeft, AlignCenter, AlignRight, RotateCw, Crop } from 'lucide-react'
 import { sectionLetter, formatDate, formatDuration, computeSectionMarks, computeGroupMarks, buildNumbering, formatMarks, questionEffectiveMarks, orderedQuestionsForSet, seedForSet, classSectionLabel, resolveSubject } from '../../lib/utils'
 import { RichText } from '../../lib/richText'
 import { GROUP_MODES, PAPER_SIZES, nextAlign } from '../../data/mockData'
 import { EditableLine } from './EditableLine'
+import { ImageCropDialog } from './ImageCropDialog'
 import { useAppStore } from '../../store/useAppStore'
 import { useTranslate } from '../../i18n'
 
@@ -103,16 +104,17 @@ function AnswerSpaceBlock({ space }) {
 
 // Corner + side handles so the image can be stretched from any edge, per the
 // standard "resize box" pattern. Handles are no-print — only the resulting
-// image size is reflected in the export.
+// image size is reflected in the export. Position classes use translate-based
+// centering (works with any hit-box size) instead of hardcoded pixel offsets.
 const RESIZE_HANDLES = [
-  { key: 'nw', cls: 'left-[-4px] top-[-4px] cursor-nwse-resize' },
-  { key: 'n', cls: 'left-1/2 top-[-4px] -translate-x-1/2 cursor-ns-resize' },
-  { key: 'ne', cls: 'right-[-4px] top-[-4px] cursor-nesw-resize' },
-  { key: 'e', cls: 'right-[-4px] top-1/2 -translate-y-1/2 cursor-ew-resize' },
-  { key: 'se', cls: 'right-[-4px] bottom-[-4px] cursor-nwse-resize' },
-  { key: 's', cls: 'left-1/2 bottom-[-4px] -translate-x-1/2 cursor-ns-resize' },
-  { key: 'sw', cls: 'left-[-4px] bottom-[-4px] cursor-nesw-resize' },
-  { key: 'w', cls: 'left-[-4px] top-1/2 -translate-y-1/2 cursor-ew-resize' },
+  { key: 'nw', cls: 'left-0 top-0 -translate-x-1/2 -translate-y-1/2 cursor-nwse-resize' },
+  { key: 'n', cls: 'left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 cursor-ns-resize' },
+  { key: 'ne', cls: 'right-0 top-0 translate-x-1/2 -translate-y-1/2 cursor-nesw-resize' },
+  { key: 'e', cls: 'right-0 top-1/2 translate-x-1/2 -translate-y-1/2 cursor-ew-resize' },
+  { key: 'se', cls: 'right-0 bottom-0 translate-x-1/2 translate-y-1/2 cursor-nwse-resize' },
+  { key: 's', cls: 'left-1/2 bottom-0 -translate-x-1/2 translate-y-1/2 cursor-ns-resize' },
+  { key: 'sw', cls: 'left-0 bottom-0 -translate-x-1/2 translate-y-1/2 cursor-nesw-resize' },
+  { key: 'w', cls: 'left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 cursor-ew-resize' },
 ]
 
 const IMG_ALIGN_ICON = { left: AlignLeft, center: AlignCenter, right: AlignRight }
@@ -127,6 +129,7 @@ function QuestionImage({ image, onResize, t }) {
   // commit one store update on mouseup.
   const [dragSize, setDragSize] = useState(null) // { width, height } | null
   const [toolbar, setToolbar] = useState(false)
+  const [cropOpen, setCropOpen] = useState(false)
 
   React.useEffect(() => {
     if (!toolbar) return
@@ -148,6 +151,11 @@ function QuestionImage({ image, onResize, t }) {
   const startDrag = (handle) => (e) => {
     e.preventDefault()
     e.stopPropagation()
+    // Pointer Events (not mouse-only events) so this works with a mouse AND
+    // with a finger on a touchscreen — mobile browsers don't reliably fire
+    // continuous mousemove during a touch-drag, which is why resizing looked
+    // completely dead on phones even though the handles were visible.
+    try { e.currentTarget.setPointerCapture?.(e.pointerId) } catch { /* unsupported, ignore */ }
     const parentWidth = wrapRef.current?.parentElement?.clientWidth || 400
     const imgEl = wrapRef.current?.querySelector('img')
     const startWidthPx = ((image.width ?? 50) / 100) * parentWidth
@@ -157,6 +165,7 @@ function QuestionImage({ image, onResize, t }) {
     let latest = null
 
     const onMove = (ev) => {
+      ev.preventDefault()
       let widthPx = startWidthPx
       let heightPx = startHeightPx
       const dx = ev.clientX - startX
@@ -172,13 +181,15 @@ function QuestionImage({ image, onResize, t }) {
       setDragSize(latest)
     }
     const onUp = () => {
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
       if (latest) onResize(latest)
       setDragSize(null)
     }
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onUp)
   }
 
   const effectiveWidth = dragSize?.width ?? image.width ?? 50
@@ -192,6 +203,7 @@ function QuestionImage({ image, onResize, t }) {
   }
 
   const AlignIcon = IMG_ALIGN_ICON[align] || AlignLeft
+  const rotate = image.rotate || 0
 
   return (
     <div ref={wrapRef} className="group/qimg relative my-1.5" style={{ width: `${effectiveWidth}%`, ...marginStyle }}>
@@ -200,7 +212,11 @@ function QuestionImage({ image, onResize, t }) {
         alt={image.caption || 'question figure'}
         onClick={onResize ? openAlignToolbar : undefined}
         className={`w-full rounded border border-ink-200 dark:border-ink-700 ${onResize ? 'cursor-pointer' : ''}`}
-        style={{ height: effectiveHeight ? `${effectiveHeight}px` : 'auto', objectFit: effectiveHeight ? 'fill' : 'contain' }}
+        style={{
+          height: effectiveHeight ? `${effectiveHeight}px` : 'auto',
+          objectFit: effectiveHeight ? 'fill' : 'contain',
+          transform: rotate ? `rotate(${rotate}deg)` : undefined,
+        }}
       />
       {image.caption && <p className="mt-0.5 text-center text-[10px] italic text-ink-400">{image.caption}</p>}
       {onResize && toolbar && (
@@ -214,20 +230,43 @@ function QuestionImage({ image, onResize, t }) {
             title={t ? t('common_moveText') : 'Move image'}
             className="rounded p-1.5 text-ink-500 hover:bg-ink-100 dark:text-ink-300 dark:hover:bg-ink-700"
           ><AlignIcon className="h-3.5 w-3.5" /></button>
+          <span className="mx-0.5 h-4 w-px bg-ink-200 dark:bg-ink-700" />
+          <button
+            type="button"
+            onClick={() => { onResize({ rotate: (rotate + 90) % 360 }); setToolbar(false) }}
+            title="Rotate image 90°"
+            className="rounded p-1.5 text-ink-500 hover:bg-ink-100 dark:text-ink-300 dark:hover:bg-ink-700"
+          ><RotateCw className="h-3.5 w-3.5" /></button>
+          <button
+            type="button"
+            onClick={() => { setCropOpen(true); setToolbar(false) }}
+            title="Crop image"
+            className="rounded p-1.5 text-ink-500 hover:bg-ink-100 dark:text-ink-300 dark:hover:bg-ink-700"
+          ><Crop className="h-3.5 w-3.5" /></button>
         </div>
       )}
       {onResize && (
+        <ImageCropDialog
+          open={cropOpen}
+          onClose={() => setCropOpen(false)}
+          imageUrl={image.originalUrl || image.url}
+          onApply={(croppedUrl) => onResize({ url: croppedUrl, originalUrl: image.originalUrl || image.url })}
+        />
+      )}
+      {onResize && (
         <div
-          className="no-print pointer-events-none absolute inset-0 opacity-0 transition-opacity group-hover/qimg:opacity-100"
+          className={`no-print pointer-events-none absolute inset-0 transition-opacity ${toolbar ? 'opacity-100' : 'opacity-0 group-hover/qimg:opacity-100 group-active/qimg:opacity-100'}`}
           title={t ? t('preview_dragResize') : undefined}
         >
           {RESIZE_HANDLES.map(({ key, cls }) => (
             <span
               key={key}
               data-resize-handle
-              onMouseDown={startDrag(key)}
-              className={`pointer-events-auto absolute h-2.5 w-2.5 rounded-sm border border-white bg-gold-500 shadow ${cls}`}
-            />
+              onPointerDown={startDrag(key)}
+              className={`pointer-events-auto touch-none absolute flex h-6 w-6 items-center justify-center select-none ${cls}`}
+            >
+              <span className="h-2.5 w-2.5 rounded-sm border border-white bg-gold-500 shadow" />
+            </span>
           ))}
         </div>
       )}
