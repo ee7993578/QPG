@@ -112,6 +112,119 @@ export const BORDER_OPTIONS = [
   { value: 'both', labelKey: 'border_both' },
 ]
 
+// Page Settings — Page/Paper category. Kept separate from BORDER_OPTIONS
+// etc. so each Page Settings section can loop over just its own list.
+export const PAGE_ORIENTATIONS = [
+  { value: 'portrait', labelKey: 'pageSettings_orientation_portrait' },
+  { value: 'landscape', labelKey: 'pageSettings_orientation_landscape' },
+]
+
+export const COLUMN_LAYOUTS = [
+  { value: 1, labelKey: 'pageSettings_columns_one' },
+  { value: 2, labelKey: 'pageSettings_columns_two' },
+]
+
+export const MARGIN_PRESETS = [
+  { value: 'normal', labelKey: 'pageSettings_margin_normal' },
+  { value: 'narrow', labelKey: 'pageSettings_margin_narrow' },
+  { value: 'wide', labelKey: 'pageSettings_margin_wide' },
+  { value: 'custom', labelKey: 'pageSettings_margin_custom' },
+]
+
+// Page padding in px for each preset. 'normal' is intentionally NOT listed
+// here — when marginPreset is 'normal' (the default), A4Preview keeps its
+// original hardcoded Tailwind padding classes untouched instead of using
+// this table, so a paper nobody has customized renders exactly as before.
+export const MARGIN_PRESET_PX = {
+  narrow: { top: 20, right: 20, bottom: 20, left: 20 },
+  wide: { top: 56, right: 56, bottom: 56, left: 56 },
+}
+
+// Page Settings — Typography category. 'normal' for both is the no-op
+// default (A4Preview applies zero inline overrides so the paper renders
+// exactly as it always has).
+export const FONT_SIZE_PRESETS = [
+  { value: 'small', labelKey: 'pageSettings_fontSize_small' },
+  { value: 'normal', labelKey: 'pageSettings_fontSize_normal' },
+  { value: 'large', labelKey: 'pageSettings_fontSize_large' },
+  { value: 'xlarge', labelKey: 'pageSettings_fontSize_xlarge' },
+]
+export const FONT_SIZE_SCALE = { small: 0.92, normal: 1, large: 1.08, xlarge: 1.16 }
+
+export const LINE_HEIGHT_PRESETS = [
+  { value: 'tight', labelKey: 'pageSettings_lineHeight_tight' },
+  { value: 'normal', labelKey: 'pageSettings_lineHeight_normal' },
+  { value: 'relaxed', labelKey: 'pageSettings_lineHeight_relaxed' },
+]
+export const LINE_HEIGHT_VALUE = { tight: 1.25, relaxed: 1.75 } // 'normal' omitted on purpose — no override
+
+// Page Settings — Spacing category. One preset controls header/section/
+// question gaps together, matching the original px values so 'normal'
+// renders identically to before.
+export const SPACING_PRESETS = [
+  { value: 'compact', labelKey: 'pageSettings_spacing_compact' },
+  { value: 'normal', labelKey: 'pageSettings_spacing_normal' },
+  { value: 'relaxed', labelKey: 'pageSettings_spacing_relaxed' },
+]
+export const SPACING_PRESET_PX = {
+  compact: { header: 16, section: 16, question: 8 },
+  relaxed: { header: 32, section: 40, question: 24 },
+}
+
+// Page Settings — Border & Frame category (extends the existing BORDER_OPTIONS).
+export const BORDER_STYLE_OPTIONS = [
+  { value: 'solid', labelKey: 'pageSettings_borderStyle_solid' },
+  { value: 'dashed', labelKey: 'pageSettings_borderStyle_dashed' },
+  { value: 'double', labelKey: 'pageSettings_borderStyle_double' },
+]
+export const BORDER_WIDTH_OPTIONS = [
+  { value: 'thin', labelKey: 'pageSettings_borderWidth_thin' },
+  { value: 'medium', labelKey: 'pageSettings_borderWidth_medium' },
+  { value: 'thick', labelKey: 'pageSettings_borderWidth_thick' },
+]
+export const BORDER_WIDTH_PX = { thin: 1, medium: 2, thick: 4 }
+export const CORNER_RADIUS_OPTIONS = [
+  { value: 'sharp', labelKey: 'pageSettings_cornerRadius_sharp' },
+  { value: 'rounded', labelKey: 'pageSettings_cornerRadius_rounded' },
+]
+
+// Page Settings — Background & Watermark category.
+export const PAGE_BG_OPTIONS = [
+  { value: 'default', labelKey: 'pageSettings_pageBg_default' },
+  { value: 'white', labelKey: 'pageSettings_pageBg_white' },
+  { value: 'cream', labelKey: 'pageSettings_pageBg_cream' },
+]
+export const PAGE_BG_COLOR = { white: '#ffffff', cream: '#fdf8ec' }
+export const WATERMARK_OPACITY_OPTIONS = [
+  { value: 'light', labelKey: 'pageSettings_watermarkOpacity_light' },
+  { value: 'medium', labelKey: 'pageSettings_watermarkOpacity_medium' },
+  { value: 'dark', labelKey: 'pageSettings_watermarkOpacity_dark' },
+]
+export const WATERMARK_OPACITY_VALUE = { light: 0.05, medium: 0.1, dark: 0.18 }
+export const WATERMARK_ANGLE_OPTIONS = [
+  { value: -30, labelKey: 'pageSettings_watermarkAngle_diagonal' },
+  { value: 30, labelKey: 'pageSettings_watermarkAngle_diagonalRight' },
+  { value: 0, labelKey: 'pageSettings_watermarkAngle_horizontal' },
+  { value: -45, labelKey: 'pageSettings_watermarkAngle_steep' },
+]
+
+// Page Settings — Numbering & Footer category.
+export const PAGE_NUMBER_FORMAT_OPTIONS = [
+  { value: 'default', labelKey: 'pageSettings_pageNumberFormat_default' },
+  { value: 'number', labelKey: 'pageSettings_pageNumberFormat_number' },
+  { value: 'ofTotal', labelKey: 'pageSettings_pageNumberFormat_ofTotal' },
+]
+export const PAGE_NUMBER_POSITION_OPTIONS = [
+  { value: 'inline', labelKey: 'pageSettings_pageNumberPosition_inline' },
+  { value: 'bottom-right', labelKey: 'pageSettings_pageNumberPosition_bottomRight' },
+  { value: 'top-right', labelKey: 'pageSettings_pageNumberPosition_topRight' },
+]
+export const FOOTER_ALIGN_OPTIONS = [
+  { value: 'left', labelKey: 'pageSettings_footerAlign_left' },
+  { value: 'center', labelKey: 'pageSettings_footerAlign_center' },
+  { value: 'right', labelKey: 'pageSettings_footerAlign_right' },
+]
+
 // Feature 2 / 7 — simple left/center/right horizontal alignment, cycled by one click.
 export const ALIGN_CYCLE = ['left', 'center', 'right']
 export function nextAlign(current) {

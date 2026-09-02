@@ -2,7 +2,7 @@ import React, { useMemo, useRef, useState } from 'react'
 import { EyeOff, AlignLeft, AlignCenter, AlignRight, RotateCw, Crop } from 'lucide-react'
 import { sectionLetter, formatDate, formatDuration, computeSectionMarks, computeGroupMarks, buildNumbering, formatMarks, questionEffectiveMarks, orderedQuestionsForSet, seedForSet, classSectionLabel, resolveSubject } from '../../lib/utils'
 import { RichText } from '../../lib/richText'
-import { GROUP_MODES, PAPER_SIZES, nextAlign } from '../../data/mockData'
+import { GROUP_MODES, PAPER_SIZES, MARGIN_PRESET_PX, FONT_SIZE_SCALE, LINE_HEIGHT_VALUE, SPACING_PRESET_PX, BORDER_WIDTH_PX, PAGE_BG_COLOR, WATERMARK_OPACITY_VALUE, nextAlign } from '../../data/mockData'
 import { EditableLine } from './EditableLine'
 import { ImageCropDialog } from './ImageCropDialog'
 import { useAppStore } from '../../store/useAppStore'
@@ -436,9 +436,79 @@ export function A4Preview({ paper, pageRef, activeSet = '', showAnswerKey = fals
   const border = settings.border || 'none'
   const instructions = (settings.instructions || []).filter((x) => x && x.trim())
 
+  // Page Settings — Page/Paper category (gear icon in Preview's "More
+  // options" row). Every field defaults to the paper's original look, so a
+  // paper nobody has touched renders pixel-identical to before this feature.
+  const orientation = settings.orientation === 'landscape' ? 'landscape' : 'portrait'
+  const pageAspect = orientation === 'landscape' ? 1 / sizeInfo.aspect : sizeInfo.aspect
+  const columns = settings.columns === 2 ? 2 : 1
+  const marginPreset = settings.marginPreset || 'normal'
+  // 'normal' intentionally leaves marginStyle empty — the existing
+  // px-8/py-9/sm:px-12/sm:py-12 classes below keep handling that case.
+  const marginStyle = marginPreset === 'normal' ? {} : (() => {
+    const px = marginPreset === 'custom'
+      ? {
+          top: settings.marginCustom?.top ?? 32,
+          right: settings.marginCustom?.right ?? 32,
+          bottom: settings.marginCustom?.bottom ?? 32,
+          left: settings.marginCustom?.left ?? 32,
+        }
+      : MARGIN_PRESET_PX[marginPreset]
+    return {
+      paddingTop: `${px.top}px`,
+      paddingRight: `${px.right}px`,
+      paddingBottom: `${px.bottom}px`,
+      paddingLeft: `${px.left}px`,
+    }
+  })()
+
   // Feature 9 — border can wrap the whole paper, just the header, both, or nothing.
   const paperBorderClass = border === 'paper' || border === 'both' ? 'border-2 border-ink-800 dark:border-ink-200' : 'border border-ink-200/70 dark:border-ink-800'
   const headerBorderClass = border === 'header' || border === 'both' ? 'border-2 border-ink-800 p-3 dark:border-ink-200' : ''
+
+  // Page Settings — Typography category. fontSize scales via a transform
+  // (children use fixed px sizes, not em/rem, so a plain font-size override
+  // wouldn't cascade); lineHeight is unitless so it inherits cleanly on its
+  // own. 'normal'/'normal' is a true no-op — no transform, no inline style.
+  const fontSizePreset = settings.fontSizePreset || 'normal'
+  const fontScale = FONT_SIZE_SCALE[fontSizePreset] || 1
+  const lineHeightPreset = settings.lineHeightPreset || 'normal'
+  const typographyStyle = {
+    ...(fontScale !== 1 ? { transform: `scale(${fontScale})`, transformOrigin: 'top left', width: `${100 / fontScale}%` } : {}),
+    ...(LINE_HEIGHT_VALUE[lineHeightPreset] ? { lineHeight: LINE_HEIGHT_VALUE[lineHeightPreset] } : {}),
+  }
+
+  // Page Settings — Spacing category. 'normal' keeps the original
+  // mt-6/space-y-7/space-y-4 Tailwind classes untouched; any other preset
+  // switches those gaps to inline margins computed from SPACING_PRESET_PX.
+  const spacingPreset = settings.spacingPreset || 'normal'
+  const spacingPx = SPACING_PRESET_PX[spacingPreset]
+  const sectionGapStyle = (idx) => (spacingPx && idx > 0 ? { marginTop: `${spacingPx.section}px` } : undefined)
+  const questionGapStyle = (idx) => (spacingPx && idx > 0 ? { marginTop: `${spacingPx.question}px` } : undefined)
+
+  // Page Settings — Border & Frame category (extends the plain border
+  // dropdown above). Only applies when a border is actually switched on;
+  // 'solid'/'medium'/'sharp' are the original look, so no overrides fire.
+  const borderStylePreset = settings.borderStyle || 'solid'
+  const borderWidthPreset = settings.borderWidth || 'medium'
+  const cornerRadiusPreset = settings.cornerRadius || 'sharp'
+  const borderLookStyle = (borderStylePreset !== 'solid' || borderWidthPreset !== 'medium')
+    ? { borderStyle: borderStylePreset, borderWidth: `${BORDER_WIDTH_PX[borderWidthPreset]}px` }
+    : {}
+  const cornerRadiusStyle = cornerRadiusPreset === 'rounded' ? { borderRadius: '14px' } : {}
+
+  // Page Settings — Background & Watermark category.
+  const pageBgPreset = settings.pageBg || 'default'
+  const pageBgStyle = PAGE_BG_COLOR[pageBgPreset] ? { backgroundColor: PAGE_BG_COLOR[pageBgPreset] } : {}
+  const watermarkOpacity = WATERMARK_OPACITY_VALUE[settings.watermarkOpacity] ?? WATERMARK_OPACITY_VALUE.light
+  const watermarkAngle = settings.watermarkAngle ?? -30
+
+  // Page Settings — Numbering & Footer category.
+  const footerAlign = settings.footerAlign || 'center'
+  const footerAlignClass = footerAlign === 'left' ? 'text-left' : footerAlign === 'right' ? 'text-right' : 'text-center'
+  const pageNumberPosition = settings.pageNumberPosition || 'inline'
+  const pageNumberFormat = settings.pageNumberFormat || 'default'
+  const pageNumberLabel = pageNumberFormat === 'number' ? '1' : pageNumberFormat === 'ofTotal' ? '1 / 1' : t('a4_page')
 
   // SRS 48/49 — deterministic per-set reorder, preview-only (does not mutate the paper).
   // Only shuffles when a Set has actually been picked; numbering (above) uses
@@ -450,11 +520,14 @@ export function A4Preview({ paper, pageRef, activeSet = '', showAnswerKey = fals
       ref={pageRef}
       id="print-root"
       className={`a4-page relative mx-auto w-full rounded-sm bg-paper-50 px-8 py-9 shadow-page sm:px-12 sm:py-12 ${fontClass} ${paperBorderClass}`}
-      style={{ maxWidth: `${sizeInfo.widthPx}px`, aspectRatio: `${sizeInfo.aspect}` }}
+      style={{ maxWidth: `${sizeInfo.widthPx}px`, aspectRatio: `${pageAspect}`, ...marginStyle, ...(border === 'paper' || border === 'both' ? borderLookStyle : {}), ...cornerRadiusStyle, ...pageBgStyle }}
     >
       {settings.watermarkText && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden">
-          <span className="rotate-[-30deg] select-none whitespace-nowrap text-6xl font-bold text-ink-900/5 dark:text-white/5">
+          <span
+            className="select-none whitespace-nowrap text-6xl font-bold text-ink-900 dark:text-white"
+            style={{ transform: `rotate(${watermarkAngle}deg)`, opacity: watermarkOpacity }}
+          >
             {settings.watermarkText}
           </span>
         </div>
@@ -466,8 +539,9 @@ export function A4Preview({ paper, pageRef, activeSet = '', showAnswerKey = fals
         </div>
       )}
 
+      <div style={typographyStyle}>
       {/* Header */}
-      <div className={`pb-4 font-display ${tpl.headerRule} ${headerBorderClass}`}>
+      <div className={`pb-4 font-display ${tpl.headerRule} ${headerBorderClass}`} style={border === 'header' || border === 'both' ? borderLookStyle : undefined}>
         {settings.headerLayout === 'split' || settings.headerLayout === 'split-both' ? (
           <div className="flex items-center gap-3">
             {settings.headerLogoUrl && <img src={settings.headerLogoUrl} alt="School logo" className="h-12 w-12 shrink-0 rounded-full object-contain" />}
@@ -520,7 +594,13 @@ export function A4Preview({ paper, pageRef, activeSet = '', showAnswerKey = fals
       </div>
 
       {/* Sections */}
-      <div className="mt-6 space-y-7">
+      <div
+        className={spacingPx ? '' : 'mt-6 space-y-7'}
+        style={{
+          ...(spacingPx ? { marginTop: `${spacingPx.header}px` } : {}),
+          ...(columns === 2 ? { columnCount: 2, columnGap: '2rem' } : {}),
+        }}
+      >
         {paper.sections.length === 0 && (
           <p className="text-center text-sm italic text-ink-400">{t('preview_noSections')}</p>
         )}
@@ -529,7 +609,7 @@ export function A4Preview({ paper, pageRef, activeSet = '', showAnswerKey = fals
           const noticeBox = section.noticeBox
           const sectionShowMarks = section.showMarks !== false
           return (
-            <div key={section.id}>
+            <div key={section.id} style={{ ...sectionGapStyle(sIdx), ...(columns === 2 ? { breakInside: 'avoid-column' } : {}) }}>
               {/* Title + marks row is skipped entirely (not just visually
                   hidden) when the section title is off — so a teacher who
                   doesn't want visible sections gets zero extra space and no
@@ -583,9 +663,9 @@ export function A4Preview({ paper, pageRef, activeSet = '', showAnswerKey = fals
                 </div>
               )}
 
-              <div className="space-y-4">
-                {section.questionGroups.map((group) => (
-                  <div key={group.id}>
+              <div className={spacingPx ? '' : 'space-y-4'}>
+                {section.questionGroups.map((group, gIdx) => (
+                  <div key={group.id} style={questionGapStyle(gIdx)}>
                     {group.pageBreakBefore && (
                       <div className="my-3 flex items-center gap-2 text-[10px] uppercase tracking-wide text-ink-300" style={{ breakBefore: 'page' }}>
                         <span className="h-px flex-1 border-t border-dashed border-ink-300" />
@@ -738,11 +818,17 @@ export function A4Preview({ paper, pageRef, activeSet = '', showAnswerKey = fals
           )
         })}
       </div>
-
-      <div className="mt-10 border-t border-dashed border-ink-200 pt-2 text-center text-[10px] text-ink-300">
-        {settings.footerText ? <p>{settings.footerText}</p> : null}
-        <p>{t('a4_endOfPaper')}{settings.showPageNumber ? ` · ${t('a4_page')}` : ''}</p>
       </div>
+
+      <div className={`mt-10 border-t border-dashed border-ink-200 pt-2 text-[10px] text-ink-300 ${footerAlignClass}`}>
+        {settings.footerText ? <p>{settings.footerText}</p> : null}
+        <p>{t('a4_endOfPaper')}{settings.showPageNumber && pageNumberPosition === 'inline' ? ` · ${pageNumberLabel}` : ''}</p>
+      </div>
+      {settings.showPageNumber && pageNumberPosition !== 'inline' && (
+        <span className={`absolute right-2 text-[10px] text-ink-300 ${pageNumberPosition === 'top-right' ? 'top-2' : 'bottom-2'}`}>
+          {pageNumberLabel}
+        </span>
+      )}
     </div>
   )
 }
