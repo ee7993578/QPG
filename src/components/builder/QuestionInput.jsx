@@ -1,12 +1,12 @@
 import React, { useRef, useState } from 'react'
 import {
   Copy, Trash2, ChevronUp, ChevronDown, GripVertical, Image as ImageIcon,
-  PenSquare, ListPlus, Pin, PinOff, Languages, Maximize2,
+  PenSquare, ListPlus, Pin, Languages, Maximize2, Plus,
 } from 'lucide-react'
 import { Textarea, Input, Label } from '../ui/Input'
 import { ImageUploadField } from '../ui/ImageUploadField'
 import { useAppStore } from '../../store/useAppStore'
-import { SymbolPalette } from './SymbolPalette'
+import { DropdownMenu, DropdownMenuButton, MenuItem, MenuSeparator } from '../ui/DropdownMenu'
 import { AnswerSpaceEditor } from './AnswerSpaceEditor'
 import { SubQuestionsEditor } from './SubQuestionsEditor'
 import { OptionsEditor } from './OptionsEditor'
@@ -22,6 +22,7 @@ export function QuestionInput({ paperId, sectionId, groupId, group, question, in
   const deleteQuestion = useAppStore((s) => s.deleteQuestion)
   const duplicateQuestion = useAppStore((s) => s.duplicateQuestion)
   const moveQuestion = useAppStore((s) => s.moveQuestion)
+  const addOption = useAppStore((s) => s.addOption)
 
   const textRef = useRef(null)
   const [expanded, setExpanded] = useState(false)
@@ -31,16 +32,6 @@ export function QuestionInput({ paperId, sectionId, groupId, group, question, in
 
   const questionType = group?.questionType || 'Custom'
   const set = (patch) => updateQuestion(paperId, sectionId, groupId, question.id, patch)
-
-  const insertSymbolIntoText = (sym) => {
-    const el = textRef.current
-    if (!el) { set({ text: `${question.text || ''}${sym}` }); return }
-    const start = el.selectionStart ?? el.value.length
-    const end = el.selectionEnd ?? el.value.length
-    const next = `${question.text.slice(0, start)}${sym}${question.text.slice(end)}`
-    set({ text: next })
-    requestAnimationFrame(() => { el.focus(); el.selectionStart = el.selectionEnd = start + sym.length })
-  }
 
   // SRS 37 — strip Word/HTML formatting on paste, keep plain text only.
   const handlePaste = (e) => {
@@ -161,58 +152,54 @@ export function QuestionInput({ paperId, sectionId, groupId, group, question, in
           />
         )}
 
-        {/* ---- Toggle row for the optional blocks above ---- */}
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-0.5 text-[11px] text-ink-400">
-          <button type="button" onClick={() => setShowImage((v) => !v)} className="flex items-center gap-1 hover:text-ink-700 dark:hover:text-ink-200">
-            <ImageIcon className="h-3 w-3" /> {showImage ? t('q_removeImage') : t('q_addImage')}
-          </button>
-          {!isMatch && !isTable && (
-            <button type="button" onClick={() => setShowAnswerSpace((v) => !v)} className="flex items-center gap-1 hover:text-ink-700 dark:hover:text-ink-200">
-              <PenSquare className="h-3 w-3" /> {showAnswerSpace ? t('q_removeAnswerSpace') : t('q_addAnswerSpace')}
-            </button>
-          )}
-          {!isMatch && !isTable && !isAssertionReason && (
-            <button type="button" onClick={() => setShowSubParts((v) => !v)} className="flex items-center gap-1 hover:text-ink-700 dark:hover:text-ink-200">
-              <ListPlus className="h-3 w-3" /> {showSubParts ? t('q_removeSubParts') : t('q_addSubParts')}
-            </button>
-          )}
-        </div>
       </div>
 
-      <div className="mt-1 flex shrink-0 flex-col items-center gap-0.5 opacity-0 transition-opacity group-hover/q:opacity-100 sm:flex-row sm:flex-wrap sm:justify-end sm:max-w-[7.5rem]">
-        <SymbolPalette onInsert={insertSymbolIntoText} />
-        <button
-          onClick={() => set({ dir: question.dir === 'rtl' ? 'ltr' : 'rtl' })}
-          className={`rounded p-1 hover:bg-ink-100 dark:hover:bg-ink-700 ${question.dir === 'rtl' ? 'text-gold-600' : 'text-ink-400'}`}
-          title={t('q_rtl')}
-        ><Languages className="h-3.5 w-3.5" /></button>
-        <button
-          onClick={() => set({ keepTogether: !question.keepTogether })}
-          className={`rounded p-1 hover:bg-ink-100 dark:hover:bg-ink-700 ${question.keepTogether ? 'text-gold-600' : 'text-ink-400'}`}
-          title={t('q_keepTogether')}
-        >{question.keepTogether ? <Pin className="h-3.5 w-3.5" /> : <PinOff className="h-3.5 w-3.5" />}</button>
-        <button
-          disabled={index === 0}
-          onClick={() => moveQuestion(paperId, sectionId, groupId, question.id, -1)}
-          className="rounded p-1 text-ink-400 hover:bg-ink-100 disabled:opacity-30 dark:hover:bg-ink-700"
-          title={t('common_moveUp') || 'Move up'}
-        ><ChevronUp className="h-3.5 w-3.5" /></button>
-        <button
-          disabled={index === total - 1}
-          onClick={() => moveQuestion(paperId, sectionId, groupId, question.id, 1)}
-          className="rounded p-1 text-ink-400 hover:bg-ink-100 disabled:opacity-30 dark:hover:bg-ink-700"
-          title={t('common_moveDown') || 'Move down'}
-        ><ChevronDown className="h-3.5 w-3.5" /></button>
-        <button
-          onClick={() => duplicateQuestion(paperId, sectionId, groupId, question.id)}
-          className="rounded p-1 text-ink-400 hover:bg-ink-100 dark:hover:bg-ink-700"
-          title={t('common_duplicate')}
-        ><Copy className="h-3.5 w-3.5" /></button>
-        <button
-          onClick={() => deleteQuestion(paperId, sectionId, groupId, question.id)}
-          className="rounded p-1 text-ink-400 hover:bg-red-50 hover:text-pen-red dark:hover:bg-red-900/20"
-          title={t('common_delete')}
-        ><Trash2 className="h-3.5 w-3.5" /></button>
+      {/* ---- Every action for this question — move, duplicate, add image /
+           answer space / sub-parts / option, RTL, keep-together, delete —
+           lives in this one kebab menu, so the row itself only ever shows
+           the question box, its expand icon, and this single ⋮ button. ---- */}
+      <div className="mt-1 shrink-0">
+        <DropdownMenu trigger={<DropdownMenuButton title={t('q_actions')} />}>
+          <MenuItem icon={ChevronUp} disabled={index === 0} onClick={() => moveQuestion(paperId, sectionId, groupId, question.id, -1)}>
+            {t('common_moveUp')}
+          </MenuItem>
+          <MenuItem icon={ChevronDown} disabled={index === total - 1} onClick={() => moveQuestion(paperId, sectionId, groupId, question.id, 1)}>
+            {t('common_moveDown')}
+          </MenuItem>
+          <MenuItem icon={Copy} onClick={() => duplicateQuestion(paperId, sectionId, groupId, question.id)}>
+            {t('common_duplicate')}
+          </MenuItem>
+          <MenuSeparator />
+          {hasOptions && (
+            <MenuItem icon={Plus} onClick={() => addOption(paperId, sectionId, groupId, question.id)}>
+              {t('q_addOption')}
+            </MenuItem>
+          )}
+          <MenuItem icon={ImageIcon} onClick={() => setShowImage((v) => !v)}>
+            {showImage ? t('q_removeImage') : t('q_addImage')}
+          </MenuItem>
+          {!isMatch && !isTable && (
+            <MenuItem icon={PenSquare} onClick={() => setShowAnswerSpace((v) => !v)}>
+              {showAnswerSpace ? t('q_removeAnswerSpace') : t('q_addAnswerSpace')}
+            </MenuItem>
+          )}
+          {!isMatch && !isTable && !isAssertionReason && (
+            <MenuItem icon={ListPlus} onClick={() => setShowSubParts((v) => !v)}>
+              {showSubParts ? t('q_removeSubParts') : t('q_addSubParts')}
+            </MenuItem>
+          )}
+          <MenuSeparator />
+          <MenuItem icon={Languages} checked={question.dir === 'rtl'} onClick={() => set({ dir: question.dir === 'rtl' ? 'ltr' : 'rtl' })}>
+            {t('q_rtl')}
+          </MenuItem>
+          <MenuItem icon={Pin} checked={!!question.keepTogether} onClick={() => set({ keepTogether: !question.keepTogether })}>
+            {t('q_keepTogether')}
+          </MenuItem>
+          <MenuSeparator />
+          <MenuItem icon={Trash2} danger onClick={() => deleteQuestion(paperId, sectionId, groupId, question.id)}>
+            {t('common_delete')}
+          </MenuItem>
+        </DropdownMenu>
       </div>
     </div>
   )

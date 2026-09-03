@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from 'react'
-import { Plus, Trash2, ChevronUp, ChevronDown, ChevronDown as Chevron, ListChecks, ScissorsLineDashed, GripVertical, Library, SlidersHorizontal, Eye, EyeOff } from 'lucide-react'
+import { Plus, Trash2, ChevronUp, ChevronDown, ChevronDown as Chevron, ListChecks, ScissorsLineDashed, GripVertical, SlidersHorizontal, Eye, EyeOff } from 'lucide-react'
 import { Select } from '../ui/Select'
 import { Input, Label, Textarea } from '../ui/Input'
 import { Button } from '../ui/Button'
-import { Badge } from '../ui/Badge'
 import { InfoHint } from '../ui/InfoHint'
+import { DropdownMenu, DropdownMenuButton, MenuItem, MenuSeparator } from '../ui/DropdownMenu'
 import { QuestionInput } from './QuestionInput'
-import { QuestionBankDialog } from './QuestionBankDialog'
 import { useAppStore } from '../../store/useAppStore'
 import { computeGroupMarks } from '../../lib/utils'
 import { QUESTION_TYPES, GROUP_MODES, OPTION_BASED_TYPES, OPTIONS_LAYOUTS } from '../../data/mockData'
@@ -51,7 +50,6 @@ export function QuestionGroupEditor({ paperId, sectionId, group, index, total, n
   const t = useTranslate()
   const [collapsed, setCollapsed] = useState(false)
   const [showMore, setShowMore] = useState(false)
-  const [bankOpen, setBankOpen] = useState(false)
   const updateQuestionGroup = useAppStore((s) => s.updateQuestionGroup)
   const deleteQuestionGroup = useAppStore((s) => s.deleteQuestionGroup)
   const moveQuestionGroup = useAppStore((s) => s.moveQuestionGroup)
@@ -61,7 +59,6 @@ export function QuestionGroupEditor({ paperId, sectionId, group, index, total, n
 
   const { providedMarks, obtainableMarks } = computeGroupMarks(group)
   const set = (patch) => updateQuestionGroup(paperId, sectionId, group.id, patch)
-  const modeLabel = GROUP_MODES.find((m) => m.value === group.mode)?.label
   // Feature 8 — this question type's total marks can be hidden from the
   // preview, same toggle pattern as a Section's total.
   const showMarks = group.showMarks !== false
@@ -84,20 +81,31 @@ export function QuestionGroupEditor({ paperId, sectionId, group, index, total, n
         </button>
         <ListChecks className="h-3.5 w-3.5 text-ink-300" />
         <span className="text-sm font-semibold text-ink-700 dark:text-ink-200">{group.customTypeName || group.questionType}</span>
-        <Badge variant="gold" className="ml-1">{modeLabel}</Badge>
-        <button
-          onClick={() => set({ showMarks: !showMarks })}
-          title={showMarks ? t('group_hideMarks') : t('group_showMarks')}
-          className="ml-auto flex items-center gap-1 rounded p-1 text-xs font-mono text-ink-400 hover:bg-ink-100 dark:hover:bg-ink-800"
+
+        <span
+          title={showMarks ? undefined : t('group_hideMarks')}
+          className={`ml-auto flex items-center gap-1 text-xs font-mono ${showMarks ? 'text-ink-400' : 'text-ink-300'}`}
         >
           {showMarks ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
           {obtainableMarks}{providedMarks !== obtainableMarks ? ` / ${providedMarks}` : ''} {t('section_marks')}
-        </button>
-        <div className="ml-1 flex items-center gap-0.5">
-          <button disabled={index === 0} onClick={() => moveQuestionGroup(paperId, sectionId, group.id, -1)} className="rounded p-1 text-ink-400 hover:bg-ink-100 disabled:opacity-30 dark:hover:bg-ink-800"><ChevronUp className="h-3.5 w-3.5" /></button>
-          <button disabled={index === total - 1} onClick={() => moveQuestionGroup(paperId, sectionId, group.id, 1)} className="rounded p-1 text-ink-400 hover:bg-ink-100 disabled:opacity-30 dark:hover:bg-ink-800"><ChevronDown className="h-3.5 w-3.5" /></button>
-          <button onClick={() => deleteQuestionGroup(paperId, sectionId, group.id)} className="rounded p-1 text-ink-400 hover:bg-red-50 hover:text-pen-red dark:hover:bg-red-900/20"><Trash2 className="h-3.5 w-3.5" /></button>
-        </div>
+        </span>
+
+        <DropdownMenu trigger={<DropdownMenuButton title={t('group_actions')} className="ml-1" />}>
+          <MenuItem icon={ChevronUp} disabled={index === 0} onClick={() => moveQuestionGroup(paperId, sectionId, group.id, -1)}>
+            {t('common_moveUp')}
+          </MenuItem>
+          <MenuItem icon={ChevronDown} disabled={index === total - 1} onClick={() => moveQuestionGroup(paperId, sectionId, group.id, 1)}>
+            {t('common_moveDown')}
+          </MenuItem>
+          <MenuSeparator />
+          <MenuItem icon={showMarks ? EyeOff : Eye} onClick={() => set({ showMarks: !showMarks })}>
+            {showMarks ? t('group_hideMarksAction') : t('group_showMarks')}
+          </MenuItem>
+          <MenuSeparator />
+          <MenuItem icon={Trash2} danger onClick={() => deleteQuestionGroup(paperId, sectionId, group.id)}>
+            {t('common_delete')}
+          </MenuItem>
+        </DropdownMenu>
       </div>
 
       {!collapsed && (
@@ -264,17 +272,7 @@ export function QuestionGroupEditor({ paperId, sectionId, group, index, total, n
             <Button size="sm" variant="outline" onClick={() => addQuestion(paperId, sectionId, group.id)}>
               <Plus className="h-3.5 w-3.5" /> {group.mode === 'or' ? t('group_addOption') : t('group_addQuestion')}
             </Button>
-            <Button size="sm" variant="ghost" onClick={() => setBankOpen(true)}>
-              <Library className="h-3.5 w-3.5" /> {t('group_insertFromBank')}
-            </Button>
           </div>
-          <QuestionBankDialog
-            open={bankOpen}
-            onClose={() => setBankOpen(false)}
-            paperId={paperId}
-            sectionId={sectionId}
-            groupId={group.id}
-          />
         </div>
       )}
     </div>

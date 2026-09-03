@@ -271,6 +271,8 @@ export const dictionaries = {
     group_insertFromBank: 'Insert from Question Bank',
     group_showMarks: 'Show marks',
     group_hideMarks: 'Marks hidden — click to show',
+    group_hideMarksAction: 'Hide marks',
+    group_actions: 'Question type options',
 
     // Preview click-to-toggle marks / image resize (Feature — click marks in preview)
     preview_clickHideMarks: 'Click to hide marks',
@@ -288,6 +290,9 @@ export const dictionaries = {
     q_align: 'Move text (left / center / right)',
     q_rtl: 'Toggle right-to-left (Urdu/Arabic)',
     q_keepTogether: 'Keep this question together on one page',
+    q_actions: 'Question options',
+    q_insertSymbol: 'Insert symbol / build equation',
+    q_addOption: 'Add Option',
 
     // Preview
     preview_set: 'Preview Set',
@@ -568,6 +573,8 @@ export const dictionaries = {
     group_insertFromBank: 'प्रश्न बैंक से डालें',
     group_showMarks: 'अंक दिखाएं',
     group_hideMarks: 'अंक छिपे हैं — दिखाने के लिए क्लिक करें',
+    group_hideMarksAction: 'अंक छुपाएं',
+    group_actions: 'प्रश्न प्रकार के विकल्प',
 
     preview_clickHideMarks: 'अंक छिपाने के लिए क्लिक करें',
     preview_clickShowMarks: 'अंक छिपे हैं — दिखाने के लिए क्लिक करें',
@@ -583,6 +590,9 @@ export const dictionaries = {
     q_align: 'टेक्स्ट खिसकाएं (बाएं / बीच / दाएं)',
     q_rtl: 'दाएं-से-बाएं करें (उर्दू/अरबी)',
     q_keepTogether: 'इस प्रश्न को एक ही पेज पर रखें',
+    q_actions: 'प्रश्न के विकल्प',
+    q_insertSymbol: 'चिह्न डालें / समीकरण बनाएं',
+    q_addOption: 'विकल्प जोड़ें',
 
     preview_set: 'सेट चुनें',
     preview_setHint: 'सिर्फ पूर्वावलोकन के लिए हर समूह में प्रश्नों का क्रम बदलता है — असली पेपर वैसा ही रहता है।',
