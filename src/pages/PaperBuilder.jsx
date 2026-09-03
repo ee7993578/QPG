@@ -1,24 +1,27 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, Download, Save, WifiOff } from 'lucide-react'
+import { ArrowLeft, Download, Save, WifiOff, FileText, FileType } from 'lucide-react'
 import { Sidebar } from '../components/layout/Sidebar'
 import { MobileHeader } from '../components/layout/MobileHeader'
 import { BottomNav } from '../components/layout/BottomNav'
 import { Button } from '../components/ui/Button'
+import { DropdownMenu, MenuItem } from '../components/ui/DropdownMenu'
 import { EditorPanel } from '../components/builder/EditorPanel'
 import { PreviewPanel } from '../components/builder/PreviewPanel'
 import { useAppStore } from '../store/useAppStore'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import { useTranslate } from '../i18n'
 import { classSectionLabel, resolveSubject } from '../lib/utils'
+import { downloadPaperAsPdf, downloadPaperAsDoc } from '../lib/exportPaper'
 
 export default function PaperBuilder() {
   const { paperId } = useParams()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
   const view = searchParams.get('view') === 'preview' ? 'preview' : 'edit'
   const isOnline = useOnlineStatus()
   const t = useTranslate()
+  const [downloading, setDownloading] = useState(false)
 
   const paper = useAppStore((s) => s.getPaper(paperId))
   const setActivePaper = useAppStore((s) => s.setActivePaper)
@@ -54,6 +57,35 @@ export default function PaperBuilder() {
 
   const examTitle = paper.examType === 'Custom' ? paper.customExamName : paper.examType
 
+  // Both downloads read the live #print-root DOM, so whatever is on screen
+  // in the preview right now is exactly what ends up in the file — the PDF
+  // is a faithful capture of it, and the Doc keeps the same look via inline
+  // styles while staying fully editable.
+  const handleDownload = async (format) => {
+    if (downloading) return
+    setDownloading(true)
+    // On mobile, only one panel is mounted at a time. If the teacher is on
+    // the Edit tab, hop over to Preview just long enough to capture it, so
+    // the download always matches what Preview shows — same as on desktop,
+    // where both panels are already visible together.
+    const isMobile = typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 767px)').matches
+    const needsPreviewSwitch = isMobile && view !== 'preview'
+    try {
+      if (needsPreviewSwitch) {
+        setSearchParams({ view: 'preview' }, { replace: true })
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+      }
+      if (format === 'pdf') await downloadPaperAsPdf(paper)
+      else downloadPaperAsDoc(paper)
+    } catch (err) {
+      console.error(err)
+      window.alert(t('builder_downloadFailed'))
+    } finally {
+      if (needsPreviewSwitch) setSearchParams({ view: 'edit' }, { replace: true })
+      setDownloading(false)
+    }
+  }
+
   return (
     <div className="flex h-screen w-full overflow-hidden bg-ink-50 dark:bg-ink-950">
       <Sidebar />
@@ -77,9 +109,22 @@ export default function PaperBuilder() {
                 <WifiOff className="h-3.5 w-3.5" /> {t('builder_offline')}
               </span>
             )}
-            <Button variant="outline" onClick={() => window.print()}>
-              <Download className="h-4 w-4" /> {t('builder_downloading')}
-            </Button>
+            <DropdownMenu
+              trigger={
+                <Button variant="outline" disabled={downloading}>
+                  <Download className="h-4 w-4" /> {downloading ? t('builder_preparingDownload') : t('builder_downloading')}
+                </Button>
+              }
+              menuClassName="min-w-[15rem]"
+            >
+              <MenuItem icon={FileText} onClick={() => handleDownload('pdf')}>
+                {t('builder_downloadPdf')}
+              </MenuItem>
+              <MenuItem icon={FileType} onClick={() => handleDownload('doc')}>
+                {t('builder_downloadDoc')}
+              </MenuItem>
+              <p className="px-3 pb-1.5 pt-1 text-[10.5px] leading-snug text-ink-400">{t('builder_downloadDocHint')}</p>
+            </DropdownMenu>
             <Button onClick={() => markPaperSaved(paper.id)}>
               <Save className="h-4 w-4" /> {t('builder_save')}
             </Button>
@@ -87,7 +132,32 @@ export default function PaperBuilder() {
         </header>
 
         {/* Mobile header */}
-        <MobileHeader title={`${examTitle} · ${view === 'edit' ? t('nav_edit') : t('nav_preview')}`} />
+        <MobileHeader
+          title={`${examTitle} · ${view === 'edit' ? t('nav_edit') : t('nav_preview')}`}
+          rightAction={
+            <DropdownMenu
+              trigger={
+                <button
+                  type="button"
+                  disabled={downloading}
+                  className="rounded-md p-1.5 text-ink-700 disabled:opacity-50 dark:text-ink-200"
+                  aria-label={t('builder_downloading')}
+                >
+                  <Download className="h-5 w-5" />
+                </button>
+              }
+              menuClassName="min-w-[14rem]"
+            >
+              <MenuItem icon={FileText} onClick={() => handleDownload('pdf')}>
+                {t('builder_downloadPdf')}
+              </MenuItem>
+              <MenuItem icon={FileType} onClick={() => handleDownload('doc')}>
+                {t('builder_downloadDoc')}
+              </MenuItem>
+              <p className="px-3 pb-1.5 pt-1 text-[10.5px] leading-snug text-ink-400">{t('builder_downloadDocHint')}</p>
+            </DropdownMenu>
+          }
+        />
 
         {/* Desktop split workspace (SRS 4.1 - 4.5) */}
         <div className="hidden min-h-0 flex-1 md:grid" style={{ gridTemplateColumns: '42% 58%' }}>

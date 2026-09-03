@@ -8,7 +8,7 @@ import { useAppStore } from '../../store/useAppStore'
 import { cn } from '../../lib/utils'
 import { useTranslate } from '../../i18n'
 
-export function MobileHeader({ title }) {
+export function MobileHeader({ title, rightAction }) {
   const [open, setOpen] = useState(false)
   const navigate = useNavigate()
   const teacher = useAppStore((s) => s.teacher)
@@ -43,14 +43,17 @@ export function MobileHeader({ title }) {
         <button onClick={() => setOpen(true)} className="rounded-md p-1.5 text-ink-700 dark:text-ink-200" aria-label="Open menu">
           <Menu className="h-5 w-5" />
         </button>
-        <p className="font-display text-sm font-semibold text-ink-900 dark:text-ink-50">{title || 'PaperCraft'}</p>
-        <button
-          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-          className="rounded-md p-1.5 text-ink-700 dark:text-ink-200"
-          aria-label="Toggle theme"
-        >
-          <SunMoon className="h-5 w-5" />
-        </button>
+        <p className="min-w-0 flex-1 truncate px-2 text-center font-display text-sm font-semibold text-ink-900 dark:text-ink-50">{title || 'PaperCraft'}</p>
+        <div className="flex shrink-0 items-center gap-1">
+          {rightAction}
+          <button
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            className="rounded-md p-1.5 text-ink-700 dark:text-ink-200"
+            aria-label="Toggle theme"
+          >
+            <SunMoon className="h-5 w-5" />
+          </button>
+        </div>
       </header>
 
       {open && (

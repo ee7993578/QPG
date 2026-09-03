@@ -41,8 +41,16 @@ npm run preview
 - Live marks validation banner (remaining / over-limit / on target)
 - Autosave indicator (debounced) + explicit Save button
 - My Paper: search, filters, Duplicate, Delete (with confirmation), Preview, Edit, Download
-- Download uses the browser print dialog (`window.print()`) against the same live-preview
-  markup, as a stand-in for real PDF generation until the backend exists
+- Download offers two formats from the same header button (`src/lib/exportPaper.js`), both
+  reading the exact live-preview DOM node (`#print-root`) the teacher is already looking at
+  so the file always matches Preview exactly:
+  - **PDF** — a full-fidelity capture of the preview (`html2canvas` + `jsPDF`), paginated to
+    match the paper's chosen size/orientation.
+  - **Google Doc (.doc)** — the same markup with every element's on-screen style frozen
+    inline, saved as a Word-compatible `.doc` file that opens fully editable in Microsoft
+    Word or Google Docs (Google Docs converts it to a native, editable Doc on open).
+  `.no-print` elements (edit-only affordances) are stripped from both exports, matching the
+  existing `@media print` rule.
 - Light / Dark / System theme
 - i18n-ready string layer (English complete; Hindi/Urdu/Arabic slots ready in `src/i18n`)
 - Fully responsive: desktop sidebar + topbar, mobile bottom nav (Dashboard/Edit/Preview/My
@@ -154,5 +162,7 @@ isolated on purpose. When the Spring Boot API is ready:
 1. Replace the store's static `papers` array + CRUD actions with calls to
    `services/api` (REST client) — the component layer won't need to change.
 2. Replace `requestOtp` / `verifyOtp` with real `/auth` endpoints.
-3. Replace `window.print()` download with a call to the `/pdf` endpoint.
+3. Optionally replace the client-side `html2canvas`/`jsPDF` PDF export in `exportPaper.js`
+   with a call to a real `/pdf` endpoint once the backend can render server-side PDFs
+   (keeps the exact same look, but avoids the client doing the rendering work).
 4. Add optimistic-locking conflict handling around `_touch` using the API's `version` field.

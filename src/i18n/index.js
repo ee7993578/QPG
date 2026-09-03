@@ -99,6 +99,11 @@ export const dictionaries = {
 
     // Builder — top bar
     builder_downloading: 'Download',
+    builder_downloadPdf: 'Download as PDF',
+    builder_downloadDoc: 'Download as Google Doc (.doc)',
+    builder_downloadDocHint: 'Opens fully editable in Word or Google Docs',
+    builder_downloadFailed: 'Download failed. Please try again.',
+    builder_preparingDownload: 'Preparing…',
     builder_save: 'Save',
     builder_offline: 'Offline — saved locally',
 
@@ -416,6 +421,11 @@ export const dictionaries = {
     field_customSubject: 'कस्टम विषय',
 
     builder_downloading: 'डाउनलोड करें',
+    builder_downloadPdf: 'PDF के रूप में डाउनलोड करें',
+    builder_downloadDoc: 'Google Doc (.doc) के रूप में डाउनलोड करें',
+    builder_downloadDocHint: 'Word या Google Docs में पूरी तरह एडिट करने लायक खुलता है',
+    builder_downloadFailed: 'डाउनलोड नहीं हो पाया। कृपया फिर से कोशिश करें।',
+    builder_preparingDownload: 'तैयार हो रहा है…',
     builder_save: 'सेव करें',
     builder_offline: 'ऑफ़लाइन — डिवाइस में सेव हो गया',
 
