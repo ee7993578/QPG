@@ -110,7 +110,7 @@ export function QuestionGroupEditor({ paperId, sectionId, group, index, total, n
 
       {!collapsed && (
         <div className="space-y-3 p-3">
-          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-4">
             <div>
               <Label>{t('group_questionType')}</Label>
               <Select
@@ -155,7 +155,7 @@ export function QuestionGroupEditor({ paperId, sectionId, group, index, total, n
             )}
           </div>
           {group.mode === 'attempt_any' && (
-            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-4">
               <div>
                 <Label>{t('group_marksPerQuestion')}</Label>
                 <NumberField
@@ -187,7 +187,7 @@ export function QuestionGroupEditor({ paperId, sectionId, group, index, total, n
 
           {showMore && (
             <div className="space-y-3 rounded-lg bg-ink-50/60 p-3 dark:bg-ink-800/30">
-              <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+              <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-4">
                 <div>
                   <Label>{t('group_negativeMarks')} <InfoHint text={t('group_negativeMarks_info')} /></Label>
                   <NumberField
@@ -204,7 +204,7 @@ export function QuestionGroupEditor({ paperId, sectionId, group, index, total, n
                     </Select>
                   </div>
                 )}
-                <div className="col-span-2 flex flex-wrap items-end gap-x-4 gap-y-2 pb-1.5">
+                <div className="sm:col-span-2 flex flex-wrap items-end gap-x-4 gap-y-2 pb-1.5">
                   <label className="flex items-center gap-1.5 text-xs font-medium text-ink-600 dark:text-ink-300">
                     <input type="checkbox" checked={!!group.hasPassage} onChange={(e) => set({ hasPassage: e.target.checked })} />
                     {t('group_commonPassage')}

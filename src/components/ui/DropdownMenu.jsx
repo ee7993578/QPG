@@ -31,7 +31,7 @@ export function DropdownMenu({ trigger, children, align = 'end', menuClassName }
         <div
           role="menu"
           className={cn(
-            'absolute z-30 mt-1 min-w-[13rem] overflow-hidden rounded-lg border border-ink-200 bg-white py-1 shadow-page dark:border-ink-700 dark:bg-ink-900',
+            'absolute z-30 mt-1 min-w-[12rem] sm:min-w-[13rem] max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-lg border border-ink-200 bg-white py-1 shadow-page dark:border-ink-700 dark:bg-ink-900',
             align === 'end' ? 'right-0' : 'left-0',
             menuClassName
           )}
@@ -54,7 +54,7 @@ export function DropdownMenuButton({ className, ...props }) {
     <button
       type="button"
       className={cn(
-        'flex h-7 w-7 items-center justify-center rounded text-ink-400 hover:bg-ink-100 hover:text-ink-700 dark:hover:bg-ink-700 dark:hover:text-ink-100',
+        'flex h-10 w-10 sm:h-7 sm:w-7 items-center justify-center rounded text-ink-400 hover:bg-ink-100 hover:text-ink-700 dark:hover:bg-ink-700 dark:hover:text-ink-100',
         className
       )}
       {...props}

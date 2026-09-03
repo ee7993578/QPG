@@ -44,7 +44,7 @@ export function MatchPairsEditor({ paperId, sectionId, groupId, questionId, matc
           />
           <button
             onClick={() => deleteMatchPair(paperId, sectionId, groupId, questionId, pair.id)}
-            className="rounded p-1 text-ink-400 hover:bg-red-50 hover:text-pen-red dark:hover:bg-red-900/20"
+            className="shrink-0 rounded p-2.5 sm:p-1 text-ink-400 hover:bg-red-50 hover:text-pen-red dark:hover:bg-red-900/20"
           ><Trash2 className="h-3.5 w-3.5" /></button>
         </div>
       ))}

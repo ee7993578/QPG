@@ -4,6 +4,7 @@ import { Input, Label, Textarea } from '../ui/Input'
 import { Select } from '../ui/Select'
 import { Button } from '../ui/Button'
 import { InfoHint } from '../ui/InfoHint'
+import { DropdownMenu, DropdownMenuButton, MenuItem, MenuSeparator } from '../ui/DropdownMenu'
 import { QuestionGroupEditor } from './QuestionGroupEditor'
 import { useAppStore } from '../../store/useAppStore'
 import { computeSectionMarks } from '../../lib/utils'
@@ -85,20 +86,34 @@ export function SectionEditor({ paperId, section, index, total, numbering }) {
               </button>
             ))}
           </div>
-          <button
-            onClick={() => updateSection(paperId, section.id, { showMarks: !showMarks })}
-            title={showMarks ? t('section_hideMarks') : t('section_showMarks')}
-            className="flex shrink-0 items-center gap-1 rounded p-1.5 text-xs font-mono text-ink-400 hover:bg-ink-100 dark:hover:bg-ink-800"
+
+          <span
+            title={showMarks ? undefined : t('section_hideMarks')}
+            className={`flex shrink-0 items-center gap-1 text-xs font-mono ${showMarks ? 'text-ink-400' : 'text-ink-300'}`}
           >
             {showMarks ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
             {obtainableMarks} {t('section_marks')}
-          </button>
-          <div className="ml-auto flex shrink-0 items-center gap-0.5">
-            <button disabled={index === 0} onClick={() => moveSection(paperId, section.id, -1)} className="rounded p-1.5 text-ink-400 hover:bg-ink-100 disabled:opacity-30 dark:hover:bg-ink-800"><ChevronUp className="h-4 w-4" /></button>
-            <button disabled={index === total - 1} onClick={() => moveSection(paperId, section.id, 1)} className="rounded p-1.5 text-ink-400 hover:bg-ink-100 disabled:opacity-30 dark:hover:bg-ink-800"><ChevronDown className="h-4 w-4" /></button>
-            <button onClick={() => duplicateSection(paperId, section.id)} title={t('common_duplicate')} className="rounded p-1.5 text-ink-400 hover:bg-ink-100 dark:hover:bg-ink-800"><Copy className="h-4 w-4" /></button>
-            <button onClick={() => deleteSection(paperId, section.id)} className="rounded p-1.5 text-ink-400 hover:bg-red-50 hover:text-pen-red dark:hover:bg-red-900/20"><Trash2 className="h-4 w-4" /></button>
-          </div>
+          </span>
+
+          <DropdownMenu trigger={<DropdownMenuButton title={t('section_actions')} className="ml-auto" />}>
+            <MenuItem icon={ChevronUp} disabled={index === 0} onClick={() => moveSection(paperId, section.id, -1)}>
+              {t('common_moveUp')}
+            </MenuItem>
+            <MenuItem icon={ChevronDown} disabled={index === total - 1} onClick={() => moveSection(paperId, section.id, 1)}>
+              {t('common_moveDown')}
+            </MenuItem>
+            <MenuItem icon={Copy} onClick={() => duplicateSection(paperId, section.id)}>
+              {t('common_duplicate')}
+            </MenuItem>
+            <MenuSeparator />
+            <MenuItem icon={showMarks ? EyeOff : Eye} onClick={() => updateSection(paperId, section.id, { showMarks: !showMarks })}>
+              {showMarks ? t('section_hideMarksAction') : t('section_showMarks')}
+            </MenuItem>
+            <MenuSeparator />
+            <MenuItem icon={Trash2} danger onClick={() => deleteSection(paperId, section.id)}>
+              {t('common_delete')}
+            </MenuItem>
+          </DropdownMenu>
         </div>
       </div>
 
@@ -141,7 +156,7 @@ export function SectionEditor({ paperId, section, index, total, numbering }) {
 
         {showMore && (
           <div className="space-y-3 rounded-lg bg-ink-50/60 p-3 dark:bg-ink-800/30">
-            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
               <div>
                 <Label>{t('section_numberingStyle')}</Label>
                 <Select

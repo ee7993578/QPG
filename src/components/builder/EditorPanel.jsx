@@ -38,7 +38,7 @@ function HeaderInstructions({ paper }) {
               onChange={(e) => update(i, e.target.value)}
               className="h-8 text-xs"
             />
-            <button onClick={() => remove(i)} className="shrink-0 rounded p-1.5 text-ink-400 hover:bg-red-50 hover:text-pen-red dark:hover:bg-red-900/20">
+            <button onClick={() => remove(i)} className="shrink-0 rounded p-2.5 sm:p-1.5 text-ink-400 hover:bg-red-50 hover:text-pen-red dark:hover:bg-red-900/20">
               <Trash2 className="h-3.5 w-3.5" />
             </button>
           </div>
@@ -119,8 +119,8 @@ export function EditorPanel({ paper }) {
               <div><dt className="inline text-ink-400">{t('exam_maxMarks')}: </dt><dd className="inline font-medium text-ink-700 dark:text-ink-200">{paper.totalMarks}</dd></div>
             </dl>
           ) : (
-            <div className="grid grid-cols-2 gap-3">
-              <div className="col-span-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="sm:col-span-2">
                 <div className="mb-1 flex items-center justify-between">
                   <Label className="mb-0">{t('field_schoolName')}</Label>
                   {teacher?.school && (
@@ -186,7 +186,7 @@ export function EditorPanel({ paper }) {
                 <Label>{t('field_totalMarks')}</Label>
                 <Input type="number" value={paper.totalMarks} onChange={(e) => updatePaperMeta(paper.id, { totalMarks: Number(e.target.value) })} />
               </div>
-              <div className="col-span-2 border-t border-dashed border-ink-100 pt-3 dark:border-ink-800">
+              <div className="sm:col-span-2 border-t border-dashed border-ink-100 pt-3 dark:border-ink-800">
                 <label className="flex items-center gap-1.5 text-xs font-medium text-ink-600 dark:text-ink-300">
                   <input
                     type="checkbox"
@@ -231,7 +231,7 @@ export function EditorPanel({ paper }) {
             <div className="mt-3 space-y-4">
               <HeaderInstructions paper={paper} />
 
-              <div className="grid grid-cols-2 gap-3 border-t border-dashed border-ink-100 pt-3 dark:border-ink-800">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 border-t border-dashed border-ink-100 pt-3 dark:border-ink-800">
                 <div>
                   <Label>{t('paperSettings_marksPosition')} <InfoHint text={t('paperSettings_marksPosition_info')} /></Label>
                   <Select value={settings.marksPosition || 'bracket'} onChange={(e) => updatePaperSettings(paper.id, { marksPosition: e.target.value })}>
@@ -244,7 +244,7 @@ export function EditorPanel({ paper }) {
                     {HEADER_LAYOUTS.map((h) => <option key={h.value} value={h.value}>{h.label}</option>)}
                   </Select>
                 </div>
-                <div className="col-span-2">
+                <div className="sm:col-span-2">
                   <ImageUploadField
                     label={t('paperSettings_logo')}
                     value={settings.headerLogoUrl || ''}
@@ -273,11 +273,11 @@ export function EditorPanel({ paper }) {
                   <Label>{t('paperSettings_watermark')}</Label>
                   <Input placeholder="e.g. CONFIDENTIAL" value={settings.watermarkText || ''} onChange={(e) => updatePaperSettings(paper.id, { watermarkText: e.target.value })} />
                 </div>
-                <div className="col-span-2">
+                <div className="sm:col-span-2">
                   <Label>{t('paperSettings_footer')}</Label>
                   <Input placeholder="e.g. Prepared by: Anita Sharma" value={settings.footerText || ''} onChange={(e) => updatePaperSettings(paper.id, { footerText: e.target.value })} />
                 </div>
-                <div className="col-span-2">
+                <div className="sm:col-span-2">
                   <label className="flex items-center gap-1.5 text-xs font-medium text-ink-600 dark:text-ink-300">
                     <input
                       type="checkbox"
