@@ -6,6 +6,7 @@ import { GROUP_MODES, PAPER_SIZES, MARGIN_PRESET_PX, FONT_SIZE_SCALE, LINE_HEIGH
 import { EditableLine } from './EditableLine'
 import { ImageCropDialog } from './ImageCropDialog'
 import { useAppStore } from '../../store/useAppStore'
+import { useSubscriptionStore } from '../../store/subscriptionStore'
 import { useTranslate } from '../../i18n'
 
 const FONT_CLASS = { sans: 'font-sans', serif: 'font-serif', display: 'font-display' }
@@ -425,6 +426,7 @@ export function A4Preview({ paper, pageRef, activeSet = '', showAnswerKey = fals
   const updateSection = useAppStore((s) => s.updateSection)
   const updateQuestionGroup = useAppStore((s) => s.updateQuestionGroup)
   const updateQuestion = useAppStore((s) => s.updateQuestion)
+  const subscriptionActive = useSubscriptionStore((s) => s.subscriptionActive)
   const numbering = useMemo(() => buildNumbering(paper, activeSet), [paper, activeSet])
   const examTitle = paper.examType === 'Custom' ? paper.customExamName : paper.examType
   const settings = paper.settings || {}
@@ -828,6 +830,17 @@ export function A4Preview({ paper, pageRef, activeSet = '', showAnswerKey = fals
         <span className={`absolute right-2 text-[10px] text-ink-300 ${pageNumberPosition === 'top-right' ? 'top-2' : 'bottom-2'}`}>
           {pageNumberLabel}
         </span>
+      )}
+
+      {/* Sections 3/18 — the Free plan carries a small PaperCraft credit line,
+          shown in the live preview and in the printed/exported PDF so what the
+          teacher sees is what they get. Paid plans get a clean page.
+          NOTE (section 42): this is branding, not a security control. Whether an
+          export is actually allowed is decided by the backend, not here. */}
+      {!subscriptionActive && (
+        <p className="mt-1 text-center text-[8px] uppercase tracking-[0.18em] text-ink-300">
+          Created with PaperCraft
+        </p>
       )}
     </div>
   )

@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { FilePlus2, LayoutList, Eye, Download, ArrowRight, Check } from 'lucide-react'
 import { Dialog } from '../ui/Dialog'
 import { Button } from '../ui/Button'
-import { useAppStore } from '../../store/useAppStore'
+import { useAuthStore } from '../../store/authStore'
 
 // Feature — shown exactly once, the very first time the app is opened
 // (guarded by the persisted `hasSeenIntro` flag), so a new teacher isn't
@@ -31,9 +31,9 @@ const STEPS = [
 ]
 
 export function FirstRunIntro() {
-  const hasSeenIntro = useAppStore((s) => s.hasSeenIntro)
-  const isAuthenticated = useAppStore((s) => s.isAuthenticated)
-  const dismissIntro = useAppStore((s) => s.dismissIntro)
+  const hasSeenIntro = useAuthStore((s) => s.hasSeenIntro)
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+  const dismissIntro = useAuthStore((s) => s.dismissIntro)
   const [step, setStep] = useState(0)
 
   if (!isAuthenticated || hasSeenIntro) return null

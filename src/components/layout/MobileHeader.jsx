@@ -1,18 +1,22 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  Menu, X, User, LayoutDashboard, PenLine, Eye, FolderOpen,
-  Settings, Languages, SunMoon, LogOut, GraduationCap,
+  Menu, X, PenLine, Eye,
+  Languages, SunMoon, LogOut, GraduationCap, School,
 } from 'lucide-react'
 import { useAppStore } from '../../store/useAppStore'
+import { useAuthStore } from '../../store/authStore'
+import { authApi } from '../../services/authApi'
 import { cn } from '../../lib/utils'
 import { useTranslate } from '../../i18n'
+import { navFor } from './navItems'
 
 export function MobileHeader({ title, rightAction }) {
   const [open, setOpen] = useState(false)
   const navigate = useNavigate()
-  const teacher = useAppStore((s) => s.teacher)
-  const logout = useAppStore((s) => s.logout)
+  const teacher = useAuthStore((s) => s.teacher)
+  const school = useAuthStore((s) => s.school)
+  const accountType = useAuthStore((s) => s.accountType)
   const activePaperId = useAppStore((s) => s.activePaperId)
   const papers = useAppStore((s) => s.papers)
   const theme = useAppStore((s) => s.theme)
@@ -21,6 +25,8 @@ export function MobileHeader({ title, rightAction }) {
   const setLanguage = useAppStore((s) => s.setLanguage)
   const t = useTranslate()
 
+  const isSchool = accountType === 'school'
+  const BrandIcon = isSchool ? School : GraduationCap
   const targetPaperId = activePaperId && papers.some((p) => p.id === activePaperId) ? activePaperId : papers[0]?.id
 
   const go = (path) => {
@@ -28,13 +34,17 @@ export function MobileHeader({ title, rightAction }) {
     navigate(path)
   }
 
+  // Same nav as the desktop sidebar (sections 10/11), plus the two
+  // builder-specific shortcuts that only make sense on mobile where the
+  // editor and preview are separate screens.
   const items = [
-    { label: t('nav_profile'), icon: User, onClick: () => go('/settings') },
-    { label: t('nav_dashboard'), icon: LayoutDashboard, onClick: () => go('/dashboard') },
+    ...navFor(accountType).map(({ to, labelKey, label, icon }) => ({
+      label: label || t(labelKey),
+      icon,
+      onClick: () => go(to),
+    })),
     { label: t('nav_edit'), icon: PenLine, onClick: () => go(targetPaperId ? `/paper/${targetPaperId}?view=edit` : '/exam/new') },
     { label: t('nav_preview'), icon: Eye, onClick: () => go(targetPaperId ? `/paper/${targetPaperId}?view=preview` : '/exam/new') },
-    { label: t('nav_myPaper'), icon: FolderOpen, onClick: () => go('/papers') },
-    { label: t('nav_settings'), icon: Settings, onClick: () => go('/settings') },
   ]
 
   return (
@@ -63,17 +73,23 @@ export function MobileHeader({ title, rightAction }) {
             <div className="flex items-center justify-between px-5 py-4 border-b border-ink-100 dark:border-ink-800">
               <div className="flex items-center gap-2">
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-ink-700 text-gold-300 dark:bg-gold-400 dark:text-ink-950">
-                  <GraduationCap className="h-4 w-4" />
+                  <BrandIcon className="h-4 w-4" />
                 </div>
                 <span className="font-display font-semibold text-ink-900 dark:text-ink-50">{t('appName')}</span>
               </div>
-              <button onClick={() => setOpen(false)} className="p-1 text-ink-400"><X className="h-5 w-5" /></button>
+              <button onClick={() => setOpen(false)} className="p-1 text-ink-400" aria-label="Close menu"><X className="h-5 w-5" /></button>
             </div>
 
-            {teacher && (
+            {isSchool && school && (
               <div className="px-5 py-4 border-b border-ink-100 dark:border-ink-800">
-                <p className="font-semibold text-ink-800 dark:text-ink-100">{teacher.name}</p>
-                <p className="text-xs text-ink-400">{teacher.school}</p>
+                <p className="truncate font-semibold text-ink-800 dark:text-ink-100">{school.schoolName}</p>
+                <p className="truncate text-xs text-ink-400">{school.adminName}</p>
+              </div>
+            )}
+            {!isSchool && teacher && (
+              <div className="px-5 py-4 border-b border-ink-100 dark:border-ink-800">
+                <p className="truncate font-semibold text-ink-800 dark:text-ink-100">{teacher.name}</p>
+                <p className="truncate text-xs text-ink-400">{teacher.school}</p>
               </div>
             )}
 
@@ -109,7 +125,7 @@ export function MobileHeader({ title, rightAction }) {
 
             <div className="px-3 py-3 border-t border-ink-100 dark:border-ink-800">
               <button
-                onClick={() => { logout(); go('/login') }}
+                onClick={async () => { await authApi.logout(); go('/login') }}
                 className={cn(
                   'flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium',
                   'text-pen-red hover:bg-red-50 dark:hover:bg-red-900/20'

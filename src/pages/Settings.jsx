@@ -7,6 +7,9 @@ import { Label, Input, Textarea } from '../components/ui/Input'
 import { Button } from '../components/ui/Button'
 import { cn } from '../lib/utils'
 import { useAppStore } from '../store/useAppStore'
+import { useAuthStore } from '../store/authStore'
+import { authApi } from '../services/authApi'
+import { toast } from '../store/uiStore'
 import { useTranslate } from '../i18n'
 
 const themeOptions = [
@@ -27,13 +30,12 @@ const languageOptions = [
 
 export default function Settings() {
   const navigate = useNavigate()
-  const teacher = useAppStore((s) => s.teacher)
+  const teacher = useAuthStore((s) => s.teacher)
   const theme = useAppStore((s) => s.theme)
   const setTheme = useAppStore((s) => s.setTheme)
   const language = useAppStore((s) => s.language)
   const setLanguage = useAppStore((s) => s.setLanguage)
-  const logout = useAppStore((s) => s.logout)
-  const updateTeacherProfile = useAppStore((s) => s.updateTeacherProfile)
+  const updateTeacherProfile = useAuthStore((s) => s.updateTeacherProfile)
   const t = useTranslate()
 
   const [editing, setEditing] = useState(false)
@@ -48,6 +50,7 @@ export default function Settings() {
     updateTeacherProfile(form)
     setEditing(false)
     setSavedFlash(true)
+    toast.success('Profile updated.')
     setTimeout(() => setSavedFlash(false), 1800)
   }
 
@@ -154,7 +157,7 @@ export default function Settings() {
           </CardContent>
         </Card>
 
-        <Button variant="danger" className="w-full" onClick={() => { logout(); navigate('/login') }}>
+        <Button variant="danger" className="w-full" onClick={async () => { await authApi.logout(); navigate('/login') }}>
           <LogOut className="h-4 w-4" /> {t('nav_logout')}
         </Button>
       </div>

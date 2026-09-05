@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, Download, Save, WifiOff, FileText, FileType } from 'lucide-react'
 import { Sidebar } from '../components/layout/Sidebar'
@@ -9,6 +9,8 @@ import { DropdownMenu, MenuItem } from '../components/ui/DropdownMenu'
 import { EditorPanel } from '../components/builder/EditorPanel'
 import { PreviewPanel } from '../components/builder/PreviewPanel'
 import { useAppStore } from '../store/useAppStore'
+import { useSubscriptionStore } from '../store/subscriptionStore'
+import { toast } from '../store/uiStore'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import { useTranslate } from '../i18n'
 import { classSectionLabel, resolveSubject } from '../lib/utils'
@@ -28,6 +30,7 @@ export default function PaperBuilder() {
   const markPaperSaved = useAppStore((s) => s.markPaperSaved)
   const undo = useAppStore((s) => s.undo)
   const redo = useAppStore((s) => s.redo)
+  const attemptDownload = useSubscriptionStore((s) => s.attemptDownload)
 
   useEffect(() => {
     if (paper) setActivePaper(paper.id)
@@ -44,6 +47,22 @@ export default function PaperBuilder() {
     return () => window.removeEventListener('keydown', onKey)
   }, [undo, redo])
 
+  // `?download=pdf|doc` — the paper list hands the export over to this page so
+  // it always runs against a mounted preview. The param is consumed once and
+  // dropped from the URL, so a refresh doesn't download the paper again.
+  const requestedDownload = searchParams.get('download')
+  const downloadHandedOff = useRef(false)
+  useEffect(() => {
+    if (!requestedDownload || !paper || downloadHandedOff.current) return
+    downloadHandedOff.current = true
+    const next = new URLSearchParams(searchParams)
+    next.delete('download')
+    setSearchParams(next, { replace: true })
+    // One frame so the preview is painted before the exporter reads its DOM.
+    requestAnimationFrame(() => handleDownload(requestedDownload === 'doc' ? 'doc' : 'pdf'))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestedDownload, paper])
+
   if (!paper) {
     return (
       <div className="flex h-screen items-center justify-center bg-ink-50 dark:bg-ink-950">
@@ -57,12 +76,20 @@ export default function PaperBuilder() {
 
   const examTitle = paper.examType === 'Custom' ? paper.customExamName : paper.examType
 
+  const handleSave = () => {
+    markPaperSaved(paper.id)
+    toast.success('Paper saved successfully.')
+  }
+
   // Both downloads read the live #print-root DOM, so whatever is on screen
   // in the preview right now is exactly what ends up in the file — the PDF
   // is a faithful capture of it, and the Doc keeps the same look via inline
   // styles while staying fully editable.
   const handleDownload = async (format) => {
     if (downloading) return
+    // Section 4/18 — paper creation/editing/preview stay unlimited; only the
+    // actual download is gated against the free quota / active subscription.
+    if (!attemptDownload()) return
     setDownloading(true)
     // On mobile, only one panel is mounted at a time. If the teacher is on
     // the Edit tab, hop over to Preview just long enough to capture it, so
@@ -77,9 +104,10 @@ export default function PaperBuilder() {
       }
       if (format === 'pdf') await downloadPaperAsPdf(paper)
       else downloadPaperAsDoc(paper)
+      toast.success(format === 'pdf' ? 'PDF downloaded.' : 'Word file downloaded.')
     } catch (err) {
       console.error(err)
-      window.alert(t('builder_downloadFailed'))
+      toast.error(t('builder_downloadFailed'))
     } finally {
       if (needsPreviewSwitch) setSearchParams({ view: 'edit' }, { replace: true })
       setDownloading(false)
@@ -125,7 +153,7 @@ export default function PaperBuilder() {
               </MenuItem>
               <p className="px-3 pb-1.5 pt-1 text-[10.5px] leading-snug text-ink-400">{t('builder_downloadDocHint')}</p>
             </DropdownMenu>
-            <Button onClick={() => markPaperSaved(paper.id)}>
+            <Button onClick={handleSave}>
               <Save className="h-4 w-4" /> {t('builder_save')}
             </Button>
           </div>

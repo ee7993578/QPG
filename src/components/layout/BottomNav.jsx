@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { LayoutDashboard, PenLine, Eye, FolderOpen } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { useAppStore } from '../../store/useAppStore'
+import { useAuthStore } from '../../store/authStore'
 import { useTranslate } from '../../i18n'
 
 export function BottomNav() {
@@ -10,7 +11,14 @@ export function BottomNav() {
   const location = useLocation()
   const activePaperId = useAppStore((s) => s.activePaperId)
   const papers = useAppStore((s) => s.papers)
+  const accountType = useAuthStore((s) => s.accountType)
   const t = useTranslate()
+
+  // A school admin has no /dashboard or /papers route — point the same two
+  // tabs at the school equivalents so nothing dead-ends on mobile (section 29).
+  const isSchool = accountType === 'school'
+  const homePath = isSchool ? '/school' : '/dashboard'
+  const papersPath = isSchool ? '/school/papers' : '/papers'
 
   const targetPaperId = activePaperId && papers.some((p) => p.id === activePaperId)
     ? activePaperId
@@ -28,10 +36,10 @@ export function BottomNav() {
   const isPreview = location.pathname.startsWith('/paper/') && new URLSearchParams(location.search).get('view') === 'preview'
 
   const items = [
-    { key: 'dashboard', label: t('nav_dashboard'), icon: LayoutDashboard, active: location.pathname === '/dashboard', onClick: () => navigate('/dashboard') },
+    { key: 'dashboard', label: t('nav_dashboard'), icon: LayoutDashboard, active: location.pathname === homePath, onClick: () => navigate(homePath) },
     { key: 'edit', label: t('nav_edit'), icon: PenLine, active: isEdit, onClick: () => goBuilder('edit') },
     { key: 'preview', label: t('nav_preview'), icon: Eye, active: isPreview, onClick: () => goBuilder('preview') },
-    { key: 'myPaper', label: t('nav_myPaper'), icon: FolderOpen, active: location.pathname === '/papers', onClick: () => navigate('/papers') },
+    { key: 'myPaper', label: t('nav_myPaper'), icon: FolderOpen, active: location.pathname === papersPath, onClick: () => navigate(papersPath) },
   ]
 
   return (

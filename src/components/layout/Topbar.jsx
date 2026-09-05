@@ -2,6 +2,7 @@ import React from 'react'
 import { useNavigate } from 'react-router-dom'
 import { SunMoon, Moon, Sun, LogOut, Languages } from 'lucide-react'
 import { useAppStore } from '../../store/useAppStore'
+import { authApi } from '../../services/authApi'
 import { cn } from '../../lib/utils'
 import { useTranslate } from '../../i18n'
 
@@ -11,7 +12,6 @@ export function Topbar({ title, subtitle, right }) {
   const navigate = useNavigate()
   const theme = useAppStore((s) => s.theme)
   const setTheme = useAppStore((s) => s.setTheme)
-  const logout = useAppStore((s) => s.logout)
   const language = useAppStore((s) => s.language)
   const setLanguage = useAppStore((s) => s.setLanguage)
   const t = useTranslate()
@@ -48,7 +48,7 @@ export function Topbar({ title, subtitle, right }) {
           <Languages className="h-4 w-4" /> {language === 'hi' ? 'हिं' : 'EN'}
         </button>
         <button
-          onClick={() => { logout(); navigate('/login') }}
+          onClick={async () => { await authApi.logout(); navigate('/login') }}
           title="Logout"
           className="flex h-9 w-9 items-center justify-center rounded-lg text-ink-500 hover:bg-red-50 hover:text-pen-red dark:text-ink-300 dark:hover:bg-red-900/20"
         >

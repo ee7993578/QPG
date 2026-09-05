@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { uid, sectionLetter } from '../lib/utils'
-import { mockTeacher, seedPapers } from '../data/mockData'
+import { seedPapers } from '../data/mockData'
 
 const AUTOSAVE_DELAY = 700
 
@@ -30,38 +30,12 @@ function makeBlankQuestion(marks = 1) {
 export const useAppStore = create(
   persist(
     (set, get) => ({
-      // ---------------- Auth ----------------
-      isAuthenticated: false,
-      teacher: null,
-      pendingMobile: null,
-
-      requestOtp: (mobile) => {
-        // Static/mock flow: any 10-digit mobile is accepted, OTP is always 1234.
-        set({ pendingMobile: mobile })
-        return { success: true }
-      },
-      verifyOtp: (otp) => {
-        if (otp === '1234') {
-          set({
-            isAuthenticated: true,
-            teacher: { ...mockTeacher, mobile: get().pendingMobile || mockTeacher.mobile },
-            pendingMobile: null,
-          })
-          return { success: true }
-        }
-        return { success: false, message: 'Incorrect OTP. Use 1234 for this demo.' }
-      },
-      logout: () => set({ isAuthenticated: false, teacher: null, activePaperId: null }),
-
-      // Feature — one-time "how this works" intro shown only the very first
-      // time the app is opened (persisted so it never shows again after).
-      hasSeenIntro: false,
-      dismissIntro: () => set({ hasSeenIntro: true }),
-
-      // Feature 5 — profile edit (school name / address / name), editable from Settings.
-      updateTeacherProfile: (patch) => {
-        set((state) => ({ teacher: { ...(state.teacher || {}), ...patch } }))
-      },
+      // NOTE: Auth (isAuthenticated/teacher/school/account type) and
+      // subscription/download-limit state have moved to authStore.js and
+      // subscriptionStore.js respectively — see src/store/. This store now
+      // owns only papers + app-level preferences, matching the target
+      // authStore / paperStore / subscriptionStore / schoolStore /
+      // questionBankStore / uiStore split described in the frontend spec.
 
       // ---------------- Theme & language ----------------
       theme: 'system', // 'light' | 'dark' | 'system'
@@ -76,6 +50,10 @@ export const useAppStore = create(
       _saveTimer: null,
 
       getPaper: (id) => get().papers.find((p) => p.id === id),
+
+      // Called by authStore.logout() so a signed-out session doesn't leave
+      // a stale "active paper" pointing at another account's paper.
+      resetSession: () => set({ activePaperId: null }),
 
       createPaper: (examDetails) => {
         const id = uid('paper')
@@ -549,9 +527,6 @@ export const useAppStore = create(
     {
       name: 'papercraft-storage',
       partialize: (state) => ({
-        isAuthenticated: state.isAuthenticated,
-        hasSeenIntro: state.hasSeenIntro,
-        teacher: state.teacher,
         theme: state.theme,
         language: state.language,
         papers: state.papers,

@@ -7,6 +7,8 @@ import { Label, Input, Textarea } from '../components/ui/Input'
 import { Select } from '../components/ui/Select'
 import { Button } from '../components/ui/Button'
 import { useAppStore } from '../store/useAppStore'
+import { useAuthStore } from '../store/authStore'
+import { toast } from '../store/uiStore'
 import { useTranslate } from '../i18n'
 import { EXAM_TYPES, DURATIONS, CLASS_PICKER_OPTIONS, SECTION_PICKER_OPTIONS, SUBJECT_PICKER_OPTIONS, QUICK_START_TEMPLATES } from '../data/mockData'
 
@@ -21,7 +23,8 @@ const STEPS = ['createExam_step1', 'createExam_step2', 'createExam_step3']
 
 export default function CreateExam() {
   const navigate = useNavigate()
-  const teacher = useAppStore((s) => s.teacher)
+  const teacher = useAuthStore((s) => s.teacher)
+  const accountType = useAuthStore((s) => s.accountType)
   const createPaper = useAppStore((s) => s.createPaper)
   const addSection = useAppStore((s) => s.addSection)
   const addQuestionGroup = useAppStore((s) => s.addQuestionGroup)
@@ -81,7 +84,8 @@ export default function CreateExam() {
   }
   const goBack = () => {
     if (step > 0) setStep((s) => s - 1)
-    else navigate('/dashboard')
+    // A School admin creates papers too — send them back to their own home.
+    else navigate(accountType === 'school' ? '/school' : '/dashboard')
   }
 
   const submit = () => {
@@ -119,6 +123,7 @@ export default function CreateExam() {
     }
 
     navigate(`/paper/${id}?view=edit`)
+    toast.success('Paper created. Add your questions on the left — the preview updates as you type.')
   }
 
   // ---------- Screen 0: pick a starting point ----------

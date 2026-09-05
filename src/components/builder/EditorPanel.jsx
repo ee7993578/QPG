@@ -8,6 +8,7 @@ import { Select } from '../ui/Select'
 import { ImageUploadField } from '../ui/ImageUploadField'
 import { InfoHint } from '../ui/InfoHint'
 import { useAppStore } from '../../store/useAppStore'
+import { useAuthStore } from '../../store/authStore'
 import { useTranslate } from '../../i18n'
 import { computePaperMarks, buildNumbering, formatDuration, classSectionLabel, resolveSubject } from '../../lib/utils'
 import { EXAM_TYPES, CLASS_PICKER_OPTIONS, SECTION_PICKER_OPTIONS, SUBJECT_PICKER_OPTIONS, DURATIONS, MARKS_POSITIONS, HEADER_LAYOUTS, FONT_FAMILIES, PAPER_TEMPLATES, PAPER_SIZES } from '../../data/mockData'
@@ -60,7 +61,7 @@ export function EditorPanel({ paper }) {
   const updatePaperMeta = useAppStore((s) => s.updatePaperMeta)
   const updatePaperSettings = useAppStore((s) => s.updatePaperSettings)
   const saveStatus = useAppStore((s) => s.saveStatus)
-  const teacher = useAppStore((s) => s.teacher)
+  const teacher = useAuthStore((s) => s.teacher)
   const undo = useAppStore((s) => s.undo)
   const redo = useAppStore((s) => s.redo)
   const canUndo = useAppStore((s) => s._history.past.length > 0)
