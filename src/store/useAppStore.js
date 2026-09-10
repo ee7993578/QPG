@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { uid, sectionLetter } from '../lib/utils'
-import { seedPapers } from '../data/mockData'
+import { apiClient, ApiError } from '../lib/apiClient'
 
 const AUTOSAVE_DELAY = 700
 
@@ -27,16 +27,100 @@ function makeBlankQuestion(marks = 1) {
   }
 }
 
+// Backend PaperResponse -> the local `paper` shape the builder/preview
+// already read (see PaperResponse.java javadoc: shaped deliberately to
+// match this 1:1, right down to nested section/group/question field names).
+function mapResponseToLocalPaper(res) {
+  return {
+    id: String(res.id),
+    status: res.status,
+    version: res.version,
+    createdAt: res.createdAt,
+    updatedAt: res.updatedAt,
+    examType: res.examType,
+    customExamName: res.customExamName,
+    examDate: res.examDate,
+    duration: res.duration,
+    totalMarks: res.totalMarks,
+    schoolName: res.schoolName,
+    showAddress: res.showAddress,
+    address: res.address,
+    className: res.className,
+    customClassName: res.customClassName,
+    section: res.section,
+    customSection: res.customSection,
+    subject: res.subject,
+    customSubject: res.customSubject,
+    ownerUserId: res.ownerUserId,
+    schoolId: res.schoolId,
+    // School review-lifecycle fields — null/unused for individual-teacher papers.
+    submittedAt: res.submittedAt,
+    reviewedAt: res.reviewedAt,
+    approvedAt: res.approvedAt,
+    finalizedAt: res.finalizedAt,
+    reviewComment: res.reviewComment,
+    reviewedByName: res.reviewedByName,
+    settings: res.settings || {},
+    sections: res.sections || [],
+    _structureLoaded: true, // fetched via GET /api/papers/{id} — has real sections, not just the summary row
+  }
+}
+
+// Personal "My Templates" layout templates are stored with the client ids
+// they were captured with (see paperTemplateApi.js) — re-issue fresh ones
+// on every apply so dropping the same template onto several papers never
+// creates id collisions, remapping correctOptionId along with its option.
+function cloneStructureWithFreshIds(sections) {
+  return (sections || []).map((sec) => ({
+    ...sec,
+    id: uid('sec'),
+    questionGroups: (sec.questionGroups || []).map((g) => ({
+      ...g,
+      id: uid('qg'),
+      questions: (g.questions || []).map((q) => {
+        const optionIdMap = {}
+        const options = (q.options || []).map((o) => {
+          const newId = uid('opt')
+          optionIdMap[o.id] = newId
+          return { ...o, id: newId }
+        })
+        return {
+          ...q,
+          id: uid('q'),
+          options,
+          subQuestions: (q.subQuestions || []).map((sq) => ({ ...sq, id: uid('sq') })),
+          matchPairs: (q.matchPairs || []).map((mp) => ({ ...mp, id: uid('mp') })),
+          correctOptionId: q.correctOptionId ? (optionIdMap[q.correctOptionId] || null) : null,
+        }
+      }),
+    })),
+  }))
+}
+
+// Local paper meta fields -> UpdatePaperRequest / CreatePaperRequest body.
+function buildMetaPayload(paper) {
+  return {
+    examType: paper.examType,
+    customExamName: paper.customExamName,
+    examDate: paper.examDate,
+    duration: paper.duration,
+    totalMarks: paper.totalMarks,
+    schoolName: paper.schoolName,
+    showAddress: paper.showAddress,
+    address: paper.address,
+    className: paper.className,
+    customClassName: paper.customClassName,
+    section: paper.section,
+    customSection: paper.customSection,
+    subject: paper.subject,
+    customSubject: paper.customSubject,
+    status: paper.status,
+  }
+}
+
 export const useAppStore = create(
   persist(
     (set, get) => ({
-      // NOTE: Auth (isAuthenticated/teacher/school/account type) and
-      // subscription/download-limit state have moved to authStore.js and
-      // subscriptionStore.js respectively — see src/store/. This store now
-      // owns only papers + app-level preferences, matching the target
-      // authStore / paperStore / subscriptionStore / schoolStore /
-      // questionBankStore / uiStore split described in the frontend spec.
-
       // ---------------- Theme & language ----------------
       theme: 'system', // 'light' | 'dark' | 'system'
       setTheme: (theme) => set({ theme }),
@@ -44,49 +128,102 @@ export const useAppStore = create(
       setLanguage: (language) => set({ language }),
 
       // ---------------- Papers ----------------
-      papers: seedPapers,
+      papers: [],
+      papersLoading: false,
+      papersLoaded: false,
       activePaperId: null,
-      saveStatus: 'saved', // 'saving' | 'saved'
+      saveStatus: 'saved', // 'saving' | 'saved' | 'error'
       _saveTimer: null,
+      _dirtyPaperId: null,
 
       getPaper: (id) => get().papers.find((p) => p.id === id),
 
       // Called by authStore.logout() so a signed-out session doesn't leave
       // a stale "active paper" pointing at another account's paper.
-      resetSession: () => set({ activePaperId: null }),
+      resetSession: () => set({ papers: [], papersLoaded: false, activePaperId: null }),
 
-      createPaper: (examDetails) => {
-        const id = uid('paper')
-        const now = new Date().toISOString()
-        const teacher = get().teacher
-        const { showAddress, address, ...restDetails } = examDetails || {}
-        const paper = {
-          id,
-          status: 'draft',
-          sections: [],
-          createdAt: now,
-          updatedAt: now,
-          version: 1,
-          settings: {
-            marksPosition: 'bracket',
-            numberingStyle: 'numeric',
-            headerLogoUrl: '',
-            headerLayout: 'center',
-            fontFamily: 'sans',
-            watermarkText: '',
-            footerText: '',
-            showPageNumber: true,
-            template: 'classic',
-            paperSize: 'A4',
-            instructions: [],
-            showAddress: !!showAddress,
-            address: address || teacher?.address || '',
-            border: 'none',
-          },
-          ...restDetails,
+      // GET /api/papers — lightweight summary rows for MyPapers/SchoolPapers.
+      // Full section/question data for a given paper is fetched on demand
+      // by loadPaper() when the builder opens it.
+      // `status` is an optional server-side filter used by the School
+      // Admin's status tabs (All / Draft / Submitted / Needs Changes /
+      // Approved / Final) — forwarded as ?status=. Calling this with no
+      // argument (as MyPapers/individual teachers always do) is byte-for-
+      // byte identical to before.
+      loadPapers: async (status) => {
+        set({ papersLoading: true })
+        try {
+          const rows = await apiClient.get('/api/papers', status ? { status } : undefined)
+          set((state) => ({
+            papers: rows.map((row) => {
+              const existing = state.papers.find((p) => p.id === String(row.id))
+              // Keep any already-loaded full structure around; summary rows
+              // don't include sections/settings.
+              return existing
+                ? { ...existing, ...row, id: String(row.id) }
+                : { ...row, id: String(row.id), sections: [], settings: {} }
+            }),
+            papersLoading: false,
+            papersLoaded: true,
+          }))
+        } catch (err) {
+          set({ papersLoading: false })
+          throw err
         }
-        set((state) => ({ papers: [paper, ...state.papers], activePaperId: id }))
-        return id
+      },
+
+      // GET /api/papers/{id} — full nested structure, used when opening the builder.
+      loadPaper: async (id) => {
+        const res = await apiClient.get(`/api/papers/${id}`)
+        const paper = mapResponseToLocalPaper(res)
+        set((state) => {
+          const existing = state.papers.find((p) => p.id === paper.id)
+          // PaperResponse (the detail endpoint) doesn't carry `ownerName` —
+          // only the summary list (PaperSummaryResponse) does. Preserve it
+          // from whatever's already in the store (e.g. the School Admin's
+          // Papers list) so the builder's status banner can still show the
+          // owning teacher's name after this full-structure fetch replaces
+          // everything else.
+          const merged = existing?.ownerName ? { ownerName: existing.ownerName, ...paper } : paper
+          return {
+            papers: existing
+              ? state.papers.map((p) => (p.id === paper.id ? merged : p))
+              : [merged, ...state.papers],
+          }
+        })
+        return paper
+      },
+
+      // POST /api/papers
+      createPaper: async (examDetails) => {
+        const { showAddress, address, ...restDetails } = examDetails || {}
+        const res = await apiClient.post('/api/papers', {
+          ...restDetails,
+          showAddress: !!showAddress,
+          address: address || '',
+        })
+        const paper = mapResponseToLocalPaper(res)
+        // Fresh papers start with no sections yet — the builder adds them locally.
+        paper.sections = paper.sections?.length ? paper.sections : []
+        paper.settings = {
+          marksPosition: 'bracket',
+          numberingStyle: 'numeric',
+          headerLogoUrl: '',
+          headerLayout: 'center',
+          fontFamily: 'sans',
+          watermarkText: '',
+          footerText: '',
+          showPageNumber: true,
+          template: 'classic',
+          paperSize: 'A4',
+          instructions: [],
+          showAddress: !!showAddress,
+          address: address || '',
+          border: 'none',
+          ...paper.settings,
+        }
+        set((state) => ({ papers: [paper, ...state.papers], activePaperId: paper.id }))
+        return paper.id
       },
 
       setActivePaper: (id) => set({ activePaperId: id }),
@@ -96,29 +233,37 @@ export const useAppStore = create(
       },
 
       // SRS 17.2 / 26 / 27-30 — template & header/footer/marks-position settings.
-      updatePaperSettings: (id, patch) => {
+      updatePaperSettings: (id, patch, opts) => {
         get()._touch(id, (paper) => {
           paper.settings = { ...(paper.settings || {}), ...patch }
+        }, opts)
+      },
+
+      // Apply a personal "My Templates" template (see paperTemplateApi.js) to
+      // an existing paper. `settings` (header/footer/font/spacing/layout) is
+      // always applied; `sections` (only present on a "layout" template) is
+      // the full blank section/question skeleton — applying it replaces the
+      // paper's current sections entirely, so callers should confirm with
+      // the teacher first if the paper already has real questions.
+      applyPaperTemplate: (id, { settings, sections } = {}) => {
+        get()._touch(id, (paper) => {
+          if (settings) paper.settings = { ...(paper.settings || {}), ...settings }
+          if (sections) paper.sections = cloneStructureWithFreshIds(sections)
         })
       },
 
-      duplicatePaper: (id) => {
-        const original = get().getPaper(id)
-        if (!original) return null
-        const newId = uid('paper')
-        const now = new Date().toISOString()
-        const clone = JSON.parse(JSON.stringify(original))
-        clone.id = newId
-        clone.status = 'draft'
-        clone.createdAt = now
-        clone.updatedAt = now
-        clone.version = 1
-        clone.examType = original.examType
+      // POST /api/papers/{id}/duplicate — deep clone happens server-side;
+      // we just take the response and drop it into the local list.
+      duplicatePaper: async (id) => {
+        const res = await apiClient.post(`/api/papers/${id}/duplicate`)
+        const clone = mapResponseToLocalPaper(res)
         set((state) => ({ papers: [clone, ...state.papers] }))
-        return newId
+        return clone.id
       },
 
-      deletePaper: (id) => {
+      // DELETE /api/papers/{id}
+      deletePaper: async (id) => {
+        await apiClient.delete(`/api/papers/${id}`)
         set((state) => ({
           papers: state.papers.filter((p) => p.id !== id),
           activePaperId: state.activePaperId === id ? null : state.activePaperId,
@@ -129,6 +274,55 @@ export const useAppStore = create(
         get()._touch(id, (paper) => {
           paper.status = 'saved'
         })
+      },
+
+      // ---------------- School paper review lifecycle ----------------
+      // Each of these calls its dedicated review-action endpoint (the
+      // backend re-validates the current status server-side every time —
+      // these are never a second source of truth) and then patches the
+      // matching entry in the local `papers` array with the fresh
+      // response, same pattern as duplicatePaper/deletePaper above. Only
+      // ever meaningful for school-connected teacher papers; calling these
+      // for any other paper is rejected by the backend with a 400.
+
+      // POST /api/papers/{id}/submit — teacher: Draft/Needs-Changes -> Submitted.
+      submitPaperForReview: async (id) => {
+        const res = await apiClient.post(`/api/papers/${id}/submit`)
+        const updated = mapResponseToLocalPaper(res)
+        set((state) => ({
+          papers: state.papers.map((p) => (p.id === id ? { ...p, ...updated } : p)),
+        }))
+        return updated
+      },
+
+      // POST /api/papers/{id}/approve — admin: Submitted -> Approved.
+      approveSchoolPaper: async (id) => {
+        const res = await apiClient.post(`/api/papers/${id}/approve`)
+        const updated = mapResponseToLocalPaper(res)
+        set((state) => ({
+          papers: state.papers.map((p) => (p.id === id ? { ...p, ...updated } : p)),
+        }))
+        return updated
+      },
+
+      // POST /api/papers/{id}/request-changes — admin: Submitted -> Needs Changes (reason required).
+      requestSchoolPaperChanges: async (id, reason) => {
+        const res = await apiClient.post(`/api/papers/${id}/request-changes`, { reason })
+        const updated = mapResponseToLocalPaper(res)
+        set((state) => ({
+          papers: state.papers.map((p) => (p.id === id ? { ...p, ...updated } : p)),
+        }))
+        return updated
+      },
+
+      // POST /api/papers/{id}/finalize — admin: Approved -> Final (locked forever).
+      finalizeSchoolPaper: async (id) => {
+        const res = await apiClient.post(`/api/papers/${id}/finalize`)
+        const updated = mapResponseToLocalPaper(res)
+        set((state) => ({
+          papers: state.papers.map((p) => (p.id === id ? { ...p, ...updated } : p)),
+        }))
+        return updated
       },
 
       // ---------------- Undo / Redo (SRS 43) ----------------
@@ -142,6 +336,7 @@ export const useAppStore = create(
           papers: previous,
           _history: { past: newPast, future: [state.papers, ...future].slice(0, 50) },
         }))
+        get()._triggerAutosave(get().activePaperId)
       },
       redo: () => {
         const { past, future } = get()._history
@@ -152,10 +347,17 @@ export const useAppStore = create(
           papers: next,
           _history: { past: [...past, state.papers].slice(-50), future: newFuture },
         }))
+        get()._triggerAutosave(get().activePaperId)
       },
 
-      // Internal helper: mutate a paper immutably + trigger autosave indicator
-      _touch: (id, mutator) => {
+      // Internal helper: mutate a paper immutably + trigger autosave to the backend.
+      // `opts.silent` skips pushing this step onto the undo stack — used by
+      // multi-step automated flows (Smart Fix's rungs) that already snapshot
+      // their own single "before" state up front, so a run that touches 8
+      // settings one after another doesn't bury the teacher's real edit
+      // history under 8 near-identical undo steps. Autosave and the actual
+      // paper mutation are completely unaffected either way.
+      _touch: (id, mutator, opts) => {
         const before = get().papers
         set((state) => ({
           papers: state.papers.map((p) => {
@@ -167,18 +369,41 @@ export const useAppStore = create(
             return draft
           }),
         }))
-        set((state) => ({
-          _history: { past: [...state._history.past, before].slice(-50), future: [] },
-        }))
-        get()._triggerAutosave()
+        if (!opts?.silent) {
+          set((state) => ({
+            _history: { past: [...state._history.past, before].slice(-50), future: [] },
+          }))
+        }
+        get()._triggerAutosave(id)
       },
 
-      _triggerAutosave: () => {
+      // Debounced sync of the touched paper's meta + settings + full nested
+      // structure to the backend (PATCH .../{id}, PUT .../{id}/settings,
+      // PUT .../{id}/structure). One combined sync keeps this simple and
+      // correct regardless of which specific action changed the paper —
+      // at the cost of a couple of extra small requests per autosave tick.
+      _triggerAutosave: (paperId) => {
         const timer = get()._saveTimer
         if (timer) clearTimeout(timer)
-        set({ saveStatus: 'saving' })
-        const t = setTimeout(() => {
-          set({ saveStatus: 'saved' })
+        set({ saveStatus: 'saving', _dirtyPaperId: paperId })
+        const t = setTimeout(async () => {
+          const id = get()._dirtyPaperId
+          const paper = id ? get().getPaper(id) : null
+          if (!id || !paper) {
+            set({ saveStatus: 'saved' })
+            return
+          }
+          try {
+            await Promise.all([
+              apiClient.patch(`/api/papers/${id}`, buildMetaPayload(paper)),
+              apiClient.put(`/api/papers/${id}/settings`, paper.settings || {}),
+              apiClient.put(`/api/papers/${id}/structure`, { sections: paper.sections || [] }),
+            ])
+            set({ saveStatus: 'saved' })
+          } catch (err) {
+            console.error('Autosave failed:', err instanceof ApiError ? err.message : err)
+            set({ saveStatus: 'error' })
+          }
         }, AUTOSAVE_DELAY)
         set({ _saveTimer: t })
       },
@@ -275,7 +500,7 @@ export const useAppStore = create(
           })
         })
       },
-      updateQuestionGroup: (paperId, sectionId, groupId, patch) => {
+      updateQuestionGroup: (paperId, sectionId, groupId, patch, opts) => {
         get()._touch(paperId, (paper) => {
           const sec = paper.sections.find((s) => s.id === sectionId)
           const grp = sec?.questionGroups.find((g) => g.id === groupId)
@@ -298,7 +523,7 @@ export const useAppStore = create(
           if (patch.marksPerQuestion !== undefined) {
             grp.questions.forEach((q) => (q.marks = Number(patch.marksPerQuestion) || 0))
           }
-        })
+        }, opts)
       },
       deleteQuestionGroup: (paperId, sectionId, groupId) => {
         get()._touch(paperId, (paper) => {
@@ -331,13 +556,13 @@ export const useAppStore = create(
       },
 
       // ---------------- Question operations ----------------
-      updateQuestion: (paperId, sectionId, groupId, questionId, patch) => {
+      updateQuestion: (paperId, sectionId, groupId, questionId, patch, opts) => {
         get()._touch(paperId, (paper) => {
           const sec = paper.sections.find((s) => s.id === sectionId)
           const grp = sec?.questionGroups.find((g) => g.id === groupId)
           const question = grp?.questions.find((q) => q.id === questionId)
           if (question) Object.assign(question, patch)
-        })
+        }, opts)
       },
       addQuestion: (paperId, sectionId, groupId) => {
         get()._touch(paperId, (paper) => {
@@ -529,7 +754,9 @@ export const useAppStore = create(
       partialize: (state) => ({
         theme: state.theme,
         language: state.language,
-        papers: state.papers,
+        // Papers now live on the backend — only cache the active id locally
+        // so a reload can jump straight back into the builder while
+        // loadPapers()/loadPaper() refetch the real data.
         activePaperId: state.activePaperId,
       }),
     }

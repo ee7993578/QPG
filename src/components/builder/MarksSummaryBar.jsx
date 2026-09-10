@@ -14,7 +14,7 @@ export function MarksSummaryBar({ obtainableMarks, totalMarks, saveStatus }) {
         {saveStatus === 'saving' ? (
           <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…</>
         ) : (
-          <><Check className="h-3.5 w-3.5 text-emerald-500" /> Auto Saved</>
+          <><Check className="h-3.5 w-3.5 text-emerald-500" /> Saved</>
         )}
       </div>
       <div

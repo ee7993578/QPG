@@ -20,11 +20,11 @@ export function Dialog({ open, onClose, title, children, footer, className }) {
       />
       <div
         className={cn(
-          'relative z-10 w-full max-w-md rounded-xl2 bg-white p-6 shadow-page dark:bg-ink-900',
+          'relative z-10 flex max-h-[85vh] w-full max-w-md flex-col rounded-xl2 bg-white p-6 shadow-page dark:bg-ink-900',
           className
         )}
       >
-        <div className="flex items-start justify-between mb-4">
+        <div className="flex items-start justify-between mb-4 shrink-0">
           <h3 className="font-display text-lg font-semibold text-ink-900 dark:text-ink-50">{title}</h3>
           <button
             onClick={onClose}
@@ -33,8 +33,11 @@ export function Dialog({ open, onClose, title, children, footer, className }) {
             <X className="h-4 w-4" />
           </button>
         </div>
-        <div className="text-sm text-ink-600 dark:text-ink-300">{children}</div>
-        {footer && <div className="mt-6 flex justify-end gap-2">{footer}</div>}
+        <div className="min-h-0 overflow-y-auto text-sm text-ink-600 dark:text-ink-300">{children}</div>
+        {/* shrink-0 so the action buttons (e.g. Smart Fix's Undo Fix / Force
+            Fit) always stay visible and reachable, never pushed off-screen
+            on short mobile viewports — only the body above scrolls. */}
+        {footer && <div className="mt-6 flex shrink-0 flex-wrap justify-end gap-2">{footer}</div>}
       </div>
     </div>
   )

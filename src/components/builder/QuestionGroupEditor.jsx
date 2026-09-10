@@ -7,6 +7,7 @@ import { InfoHint } from '../ui/InfoHint'
 import { DropdownMenu, DropdownMenuButton, MenuItem, MenuSeparator } from '../ui/DropdownMenu'
 import { QuestionInput } from './QuestionInput'
 import { useAppStore } from '../../store/useAppStore'
+import { useUiStore } from '../../store/uiStore'
 import { computeGroupMarks } from '../../lib/utils'
 import { QUESTION_TYPES, GROUP_MODES, OPTION_BASED_TYPES, OPTIONS_LAYOUTS } from '../../data/mockData'
 import { useTranslate } from '../../i18n'
@@ -56,6 +57,15 @@ export function QuestionGroupEditor({ paperId, sectionId, group, index, total, n
   const reorderQuestionGroups = useAppStore((s) => s.reorderQuestionGroups)
   const reorderQuestions = useAppStore((s) => s.reorderQuestions)
   const addQuestion = useAppStore((s) => s.addQuestion)
+
+  // Edit-from-preview — if the teacher jumped here for a question that
+  // lives inside a collapsed question type, open it automatically so the
+  // question is actually visible for the QuestionInput below to scroll to.
+  const focusQuestion = useUiStore((s) => s.focusQuestion)
+  useEffect(() => {
+    if (focusQuestion?.groupId === group.id && collapsed) setCollapsed(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusQuestion?.nonce])
 
   const { providedMarks, obtainableMarks } = computeGroupMarks(group)
   const set = (patch) => updateQuestionGroup(paperId, sectionId, group.id, patch)

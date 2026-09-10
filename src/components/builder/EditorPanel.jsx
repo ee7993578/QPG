@@ -62,6 +62,13 @@ export function EditorPanel({ paper }) {
   const updatePaperSettings = useAppStore((s) => s.updatePaperSettings)
   const saveStatus = useAppStore((s) => s.saveStatus)
   const teacher = useAuthStore((s) => s.teacher)
+  const school = useAuthStore((s) => s.school)
+  const accountType = useAuthStore((s) => s.accountType)
+  // A School Admin's saved school name/address live on `school`, not
+  // `teacher` (that's null for a school account) — read from whichever
+  // profile actually applies, same as the create-exam wizard.
+  const profileSchoolName = accountType === 'school' ? (school?.schoolName || '') : (teacher?.school || '')
+  const profileAddress = accountType === 'school' ? (school?.address || '') : (teacher?.address || '')
   const undo = useAppStore((s) => s.undo)
   const redo = useAppStore((s) => s.redo)
   const canUndo = useAppStore((s) => s._history.past.length > 0)
@@ -75,7 +82,7 @@ export function EditorPanel({ paper }) {
   return (
     <div className="flex h-full flex-col">
       <div className="scroll-thin flex-1 space-y-4 overflow-y-auto p-4">
-        <div className="flex items-center justify-end gap-1.5">
+        <div data-tour="builder-undo-redo" className="flex items-center justify-end gap-1.5">
           <button
             disabled={!canUndo}
             onClick={undo}
@@ -124,10 +131,10 @@ export function EditorPanel({ paper }) {
               <div className="sm:col-span-2">
                 <div className="mb-1 flex items-center justify-between">
                   <Label className="mb-0">{t('field_schoolName')}</Label>
-                  {teacher?.school && (
+                  {profileSchoolName && (
                     <button
                       type="button"
-                      onClick={() => updatePaperMeta(paper.id, { schoolName: teacher.school })}
+                      onClick={() => updatePaperMeta(paper.id, { schoolName: profileSchoolName })}
                       className="text-[11px] font-medium text-ink-400 hover:text-ink-700 dark:hover:text-gold-300"
                     >{t('paperSettings_useProfileSchool')}</button>
                   )}
@@ -192,7 +199,7 @@ export function EditorPanel({ paper }) {
                   <input
                     type="checkbox"
                     checked={!!settings.showAddress}
-                    onChange={(e) => updatePaperSettings(paper.id, { showAddress: e.target.checked, address: settings.address || teacher?.address || '' })}
+                    onChange={(e) => updatePaperSettings(paper.id, { showAddress: e.target.checked, address: settings.address || profileAddress || '' })}
                   />
                   {t('paperSettings_showAddress')}
                 </label>
@@ -200,10 +207,10 @@ export function EditorPanel({ paper }) {
                   <div className="mt-2">
                     <div className="mb-1 flex items-center justify-between">
                       <Label className="mb-0">{t('paperSettings_address')}</Label>
-                      {teacher?.address && (
+                      {profileAddress && (
                         <button
                           type="button"
-                          onClick={() => updatePaperSettings(paper.id, { address: teacher.address })}
+                          onClick={() => updatePaperSettings(paper.id, { address: profileAddress })}
                           className="text-[11px] font-medium text-ink-400 hover:text-ink-700 dark:hover:text-gold-300"
                         >{t('paperSettings_useProfileSchool')}</button>
                       )}
@@ -314,7 +321,7 @@ export function EditorPanel({ paper }) {
             </div>
             <p className="font-display text-sm font-semibold text-ink-800 dark:text-ink-100">{t('emptyState_title')}</p>
             <p className="mx-auto mt-1 max-w-xs text-xs text-ink-400">{t('emptyState_hint')}</p>
-            <Button className="mt-4" onClick={() => addSection(paper.id)}>
+            <Button data-tour="builder-add-section" className="mt-4" onClick={() => addSection(paper.id)}>
               <Plus className="h-4 w-4" /> {t('paper_addSection')}
             </Button>
             <div className="mx-auto mt-5 flex max-w-sm items-start justify-between gap-2 text-left text-[11px] text-ink-400">
@@ -333,7 +340,7 @@ export function EditorPanel({ paper }) {
             </div>
           </div>
         ) : (
-          <Button variant="secondary" className="w-full" onClick={() => addSection(paper.id)}>
+          <Button data-tour="builder-add-section" variant="secondary" className="w-full" onClick={() => addSection(paper.id)}>
             <Plus className="h-4 w-4" /> {t('paper_addSection')}
           </Button>
         )}

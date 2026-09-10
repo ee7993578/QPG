@@ -1,15 +1,19 @@
 import React, { useEffect, useState } from 'react'
-import { LayoutTemplate, Building2 } from 'lucide-react'
+import { LayoutTemplate, Building2, Users } from 'lucide-react'
 import { AppShell } from '../../components/layout/AppShell'
 import { GridSkeleton } from '../../components/ui/States'
-import { BuiltInTemplates, SchoolTemplates as SchoolTemplateList } from '../../components/templates/TemplateGallery'
+import { BuiltInTemplates, SchoolTemplates as SchoolTemplateList, TeacherTemplates } from '../../components/templates/TemplateGallery'
 import { templateApi } from '../../services/templateApi'
 import { cn } from '../../lib/utils'
 
 /**
- * Section 25 — school templates. Identical gallery to the teacher's page, with
- * editing switched on: only a School admin creates, edits, deletes and sets the
- * default template for the school.
+ * Section 25 — templates, as seen by a School Admin ("school login"). Shows
+ * exactly three tabs: the school's own shared templates (editable here),
+ * the built-in software layouts, and a read-only aggregate of every
+ * template every teacher at the school has personally saved. A School
+ * Admin does not get a separate "My Templates" tab on this page — their own
+ * personal templates (if any) show up alongside every other teacher's under
+ * "Teacher Templates".
  */
 export default function SchoolTemplatesPage() {
   const [tab, setTab] = useState('school')
@@ -23,7 +27,8 @@ export default function SchoolTemplatesPage() {
 
   const tabs = [
     { key: 'school', label: 'School Templates', icon: Building2 },
-    { key: 'builtin', label: 'Paper Layouts', icon: LayoutTemplate },
+    { key: 'builtin', label: 'Software Templates', icon: LayoutTemplate },
+    { key: 'teachers', label: 'Teacher Templates', icon: Users },
   ]
 
   return (
@@ -51,7 +56,9 @@ export default function SchoolTemplatesPage() {
           ))}
         </div>
 
-        {loading ? (
+        {tab === 'teachers' ? (
+          <TeacherTemplates />
+        ) : loading ? (
           <GridSkeleton items={3} />
         ) : tab === 'school' ? (
           <SchoolTemplateList editable />

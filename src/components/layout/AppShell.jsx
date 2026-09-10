@@ -3,12 +3,15 @@ import { Sidebar } from './Sidebar'
 import { Topbar } from './Topbar'
 import { MobileHeader } from './MobileHeader'
 import { BottomNav } from './BottomNav'
-import { FirstRunIntro } from './FirstRunIntro'
 
+// Note: the old plain-modal "FirstRunIntro" (4 static slides, no spotlight)
+// has been replaced by the real spotlight guided tour — see
+// components/tour/TourOverlay.jsx, auto-started from Dashboard.jsx and
+// PaperBuilder.jsx. Keeping both would mean showing a new teacher two
+// different onboarding flows back to back.
 export function AppShell({ title, subtitle, mobileTitle, right, noPadding, children }) {
   return (
     <div className="flex h-screen w-full overflow-hidden bg-ink-50 dark:bg-ink-950">
-      <FirstRunIntro />
       <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar title={title} subtitle={subtitle} right={right} />

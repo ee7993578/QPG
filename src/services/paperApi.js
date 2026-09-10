@@ -1,39 +1,45 @@
-// paperApi — sections 36/40. Every paper CRUD path a component needs, in
-// one place, so no page imports fetch/axios directly. Delegates to
-// useAppStore (localStorage-backed) until the Spring Boot API exists.
+// paperApi — every paper CRUD path a component needs, in one place, so no
+// page imports fetch/apiClient directly. Delegates to useAppStore, which is
+// now backed by the real Spring Boot API (GET/POST/PATCH/PUT/DELETE
+// /api/papers/...). Structure autosave (sections/questions/etc.) happens
+// automatically via useAppStore's debounced _triggerAutosave.
 import { useAppStore } from '../store/useAppStore'
 import { useSubscriptionStore } from '../store/subscriptionStore'
+import { apiClient, ApiError } from '../lib/apiClient'
 import { downloadPaperAsPdf, downloadPaperAsDoc } from '../lib/exportPaper'
-
-const delay = (ms = 280) => new Promise((r) => setTimeout(r, ms))
+import { downloadPaperAsDocx } from '../lib/exportDocx'
 
 export const paperApi = {
-  // GET /api/papers
-  async getPapers() {
-    await delay()
+  // GET /api/papers (optional ?status= filter — used by the School Admin's
+  // status tabs; omit for the default unfiltered MyPapers/SchoolPapers list).
+  async getPapers(status) {
+    await useAppStore.getState().loadPapers(status)
     return useAppStore.getState().papers
   },
 
-  // GET /api/papers/{id}
+  // GET /api/papers/{id} — fetches the full nested structure.
   async getPaper(id) {
-    await delay()
-    return useAppStore.getState().getPaper(id) || null
+    try {
+      return await useAppStore.getState().loadPaper(id)
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) return null
+      throw err
+    }
   },
 
   // POST /api/papers
   async createPaper(examDetails) {
-    await delay(380)
     return useAppStore.getState().createPaper(examDetails)
   },
 
-  // PATCH /api/papers/{id}
+  // PATCH /api/papers/{id} — applied locally immediately; the backend copy
+  // is synced by useAppStore's debounced autosave.
   async updatePaper(id, patch) {
-    await delay(0)
     useAppStore.getState().updatePaperMeta(id, patch)
     return { success: true }
   },
 
-  // PATCH /api/papers/{id}/settings
+  // PATCH /api/papers/{id}/settings — same local-first + autosave pattern.
   async updatePaperSettings(id, patch) {
     useAppStore.getState().updatePaperSettings(id, patch)
     return { success: true }
@@ -41,30 +47,64 @@ export const paperApi = {
 
   // POST /api/papers/{id}/duplicate
   async duplicatePaper(id) {
-    await delay()
     return useAppStore.getState().duplicatePaper(id)
   },
 
   // DELETE /api/papers/{id}
   async deletePaper(id) {
-    await delay()
-    useAppStore.getState().deletePaper(id)
+    await useAppStore.getState().deletePaper(id)
     return { success: true }
   },
 
+  // ---- School paper review lifecycle (school-connected teachers only) ----
+
+  // POST /api/papers/{id}/submit
+  async submitForReview(id) {
+    return useAppStore.getState().submitPaperForReview(id)
+  },
+
+  // POST /api/papers/{id}/approve
+  async approvePaper(id) {
+    return useAppStore.getState().approveSchoolPaper(id)
+  },
+
+  // POST /api/papers/{id}/request-changes
+  async requestChanges(id, reason) {
+    return useAppStore.getState().requestSchoolPaperChanges(id, reason)
+  },
+
+  // POST /api/papers/{id}/finalize
+  async finalizePaper(id) {
+    return useAppStore.getState().finalizeSchoolPaper(id)
+  },
+
   /**
-   * POST /api/papers/{id}/download  → the real backend will return a PDF
-   * stream and enforce the quota server-side (section 42). For now the quota
-   * check is a UI gate only and the file is produced client-side from the
-   * live preview DOM.
+   * POST /api/papers/{id}/download — the backend enforces ownership/school
+   * visibility and the free-download quota server-side (section 42); once
+   * authorized, the PDF/DOC itself is still produced client-side from the
+   * live preview DOM (section 43).
    *
-   * Returns { success, reason } — reason 'quota' means the paywall opened.
+   * Returns { success, reason } — reason 'quota' means the paywall should open.
    */
   async downloadPaper(paper, format = 'pdf') {
-    const allowed = useSubscriptionStore.getState().attemptDownload()
-    if (!allowed) return { success: false, reason: 'quota' }
+    try {
+      await apiClient.post(`/api/papers/${paper.id}/download`)
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 400) {
+        // Quota exhausted server-side — open the same paywall the local
+        // subscriptionStore used to gate on.
+        useSubscriptionStore.setState({ downloadLockOpen: true })
+        return { success: false, reason: 'quota' }
+      }
+      if (err instanceof ApiError && err.status === 403) {
+        return { success: false, reason: 'forbidden', error: err }
+      }
+      return { success: false, reason: 'error', error: err }
+    }
+
     try {
       if (format === 'pdf') await downloadPaperAsPdf(paper)
+      else if (format === 'docx') await downloadPaperAsDocx(paper)
       else downloadPaperAsDoc(paper)
       return { success: true }
     } catch (err) {

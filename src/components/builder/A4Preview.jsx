@@ -1,13 +1,39 @@
-import React, { useMemo, useRef, useState } from 'react'
+import React, { useMemo, useRef, useState, useLayoutEffect } from 'react'
 import { EyeOff, AlignLeft, AlignCenter, AlignRight, RotateCw, Crop } from 'lucide-react'
 import { sectionLetter, formatDate, formatDuration, computeSectionMarks, computeGroupMarks, buildNumbering, formatMarks, questionEffectiveMarks, orderedQuestionsForSet, seedForSet, classSectionLabel, resolveSubject } from '../../lib/utils'
 import { RichText } from '../../lib/richText'
-import { GROUP_MODES, PAPER_SIZES, MARGIN_PRESET_PX, FONT_SIZE_SCALE, LINE_HEIGHT_VALUE, SPACING_PRESET_PX, BORDER_WIDTH_PX, PAGE_BG_COLOR, WATERMARK_OPACITY_VALUE, nextAlign } from '../../data/mockData'
+import { GROUP_MODES, PAPER_SIZES, MARGIN_PRESET_PX, FONT_SIZE_SCALE, CUSTOM_FONT_SIZE_BASE_PX, DEFAULT_CUSTOM_FONT_SIZE_PX, LINE_HEIGHT_VALUE, SPACING_PRESET_PX, SPACING_CUSTOM_DEFAULT, BORDER_WIDTH_PX, PAGE_BG_COLOR, WATERMARK_OPACITY_VALUE, nextAlign } from '../../data/mockData'
 import { EditableLine } from './EditableLine'
 import { ImageCropDialog } from './ImageCropDialog'
 import { useAppStore } from '../../store/useAppStore'
 import { useSubscriptionStore } from '../../store/subscriptionStore'
+import { useUiStore } from '../../store/uiStore'
 import { useTranslate } from '../../i18n'
+
+/**
+ * Edit-from-preview — clicking (or selecting text in) a question's line in
+ * the live preview opens its usual Bold/Italic/Underline popup toolbar
+ * (see EditableLine), with one more icon in it: a pencil that jumps
+ * straight to that exact question in the existing question editor — same
+ * editor, same state, no second editing surface, and no separate visible
+ * "Edit" label cluttering the question. See SectionEditor/
+ * QuestionGroupEditor for the receiving end.
+ *
+ * Double-clicking/double-tapping a line is a *different* action — it edits
+ * that line's text right there in the preview (see EditableLine), for any
+ * line in the paper, not just questions. It intentionally does NOT jump to
+ * the Edit tab, so it never fights with the pencil icon above.
+ */
+function OrRowWrapper({ sectionId, groupId, questionId, t, children }) {
+  return (
+    <li
+      className="group/q relative flex gap-2 text-[13.5px] leading-relaxed text-ink-800"
+      style={{ marginBottom: '8px' }}
+    >
+      {children}
+    </li>
+  )
+}
 
 const FONT_CLASS = { sans: 'font-sans', serif: 'font-serif', display: 'font-display' }
 
@@ -358,7 +384,7 @@ function SubQuestionsBlock({ subQuestions, marksPosition }) {
   )
 }
 
-function QuestionBody({ question, group, marksPosition, showAnswerKey, onTextChange, onAlignChange, onImageResize, onAssertionChange, onAssertionAlign, onReasonChange, onReasonAlign, t }) {
+function QuestionBody({ question, group, marksPosition, showAnswerKey, onJumpToQuestion, onTextChange, onAlignChange, onStyleChange, onImageResize, onAssertionChange, onAssertionAlign, onAssertionStyleChange, onReasonChange, onReasonAlign, onReasonStyleChange, t }) {
   const type = group.questionType
   if (type === 'Assertion-Reason') {
     return (
@@ -369,6 +395,9 @@ function QuestionBody({ question, group, marksPosition, showAnswerKey, onTextCha
           align={question.assertionAlign || 'left'}
           onAlign={onAssertionAlign}
           onText={onAssertionChange}
+          style={question.assertionStyle}
+          onStyle={onAssertionStyleChange}
+          onJumpToQuestion={onJumpToQuestion}
           className="text-[13.5px] text-ink-800"
           placeholder="Assertion (A): …"
         />
@@ -378,6 +407,8 @@ function QuestionBody({ question, group, marksPosition, showAnswerKey, onTextCha
           align={question.reasonAlign || 'left'}
           onAlign={onReasonAlign}
           onText={onReasonChange}
+          style={question.reasonStyle}
+          onStyle={onReasonStyleChange}
           className="text-[13.5px] text-ink-800"
           placeholder="Reason (R): …"
         />
@@ -409,6 +440,15 @@ function QuestionBody({ question, group, marksPosition, showAnswerKey, onTextCha
         align={question.dir === 'rtl' ? (question.align === 'left' ? 'right' : question.align) : (question.align || 'left')}
         onAlign={onAlignChange}
         onText={onTextChange}
+        style={question.style}
+        onStyle={onStyleChange}
+        onJumpToQuestion={onJumpToQuestion}
+        // The "gap below" value in question.style.marginBottom is still shown/edited
+        // in this line's own popup as normal, but it's applied at the <li> level in
+        // A4Preview (see the per-question <li> style below) so it actually controls
+        // the space to the next question. Applying it here too would double it up
+        // inside this flex item, on top of the li's own marginBottom.
+        applyMarginBottom={false}
         className="text-[13.5px] leading-relaxed text-ink-800"
         placeholder="Untitled question…"
         dir={question.dir === 'rtl' ? 'rtl' : 'ltr'}
@@ -435,6 +475,26 @@ export function A4Preview({ paper, pageRef, activeSet = '', showAnswerKey = fals
   const tpl = TEMPLATE_CLASS[settings.template] || TEMPLATE_CLASS.classic
   const sizeInfo = PAPER_SIZES.find((p) => p.value === settings.paperSize) || PAPER_SIZES[0]
   const seed = seedForSet(activeSet || 'A')
+
+  // Bug fix (Smart Fix / custom font size): `typographyStyle` below shrinks
+  // the whole exam-content block with a CSS `transform: scale()` — this is
+  // paint-only, so the block's own LAYOUT height (its contribution to
+  // #print-root's scrollHeight, which is exactly what measurePageCount() in
+  // smartFix.js reads, and what html2canvas uses to size the exported
+  // canvas) stayed at the pre-shrink size no matter how small fontScale got.
+  // Two visible symptoms followed: Smart Fix's font-size steps barely moved
+  // the measured page count (so a big target like 5→2 pages looked
+  // "impossible" even though the visual shrink was real), and the exported
+  // PDF/print carried the untouched, now-empty leftover space as literal
+  // blank page area at the bottom.
+  // Fix: measure the block's own true (pre-transform) height, then give its
+  // wrapper an explicit height of that value × fontScale — its real,
+  // visually-scaled size — so #print-root's own layout height (and every
+  // downstream page-count/export calculation built on it) matches exactly
+  // what's actually on screen. Re-measures on every content/size change via
+  // ResizeObserver, so any later edit keeps this in sync automatically.
+  const typoContentRef = useRef(null)
+  const [typoScaledHeight, setTypoScaledHeight] = useState(null)
   const border = settings.border || 'none'
   const instructions = (settings.instructions || []).filter((x) => x && x.trim())
 
@@ -472,21 +532,67 @@ export function A4Preview({ paper, pageRef, activeSet = '', showAnswerKey = fals
   // (children use fixed px sizes, not em/rem, so a plain font-size override
   // wouldn't cascade); lineHeight is unitless so it inherits cleanly on its
   // own. 'normal'/'normal' is a true no-op — no transform, no inline style.
-  const fontSizePreset = settings.fontSizePreset || 'normal'
-  const fontScale = FONT_SIZE_SCALE[fontSizePreset] || 1
+  const fontSizePreset = settings.fontSizePreset || 'custom'
+  const fontScale = fontSizePreset === 'custom'
+    ? (settings.fontSizeCustomPx || DEFAULT_CUSTOM_FONT_SIZE_PX) / CUSTOM_FONT_SIZE_BASE_PX
+    : (FONT_SIZE_SCALE[fontSizePreset] || 1)
   const lineHeightPreset = settings.lineHeightPreset || 'normal'
+  const lineHeightValue = lineHeightPreset === 'custom'
+    ? (settings.lineHeightCustom || 1.5)
+    : LINE_HEIGHT_VALUE[lineHeightPreset]
   const typographyStyle = {
     ...(fontScale !== 1 ? { transform: `scale(${fontScale})`, transformOrigin: 'top left', width: `${100 / fontScale}%` } : {}),
-    ...(LINE_HEIGHT_VALUE[lineHeightPreset] ? { lineHeight: LINE_HEIGHT_VALUE[lineHeightPreset] } : {}),
+    ...(lineHeightValue ? { lineHeight: lineHeightValue } : {}),
   }
 
   // Page Settings — Spacing category. 'normal' keeps the original
   // mt-6/space-y-7/space-y-4 Tailwind classes untouched; any other preset
   // switches those gaps to inline margins computed from SPACING_PRESET_PX.
+  // (Hoisted above the height-sync effect below — that effect's dependency
+  // array needs these primitive values too, see the comment there.)
   const spacingPreset = settings.spacingPreset || 'normal'
-  const spacingPx = SPACING_PRESET_PX[spacingPreset]
+  const spacingPx = spacingPreset === 'custom'
+    ? { ...SPACING_CUSTOM_DEFAULT, ...(settings.spacingCustom || {}) }
+    : SPACING_PRESET_PX[spacingPreset]
   const sectionGapStyle = (idx) => (spacingPx && idx > 0 ? { marginTop: `${spacingPx.section}px` } : undefined)
   const questionGapStyle = (idx) => (spacingPx && idx > 0 ? { marginTop: `${spacingPx.question}px` } : undefined)
+
+  // Bug fix (Smart Fix race condition): this effect used to depend on
+  // `[fontScale]` only. That's synchronous and safe for font-size changes
+  // (fontScale itself changes every time, so React re-runs this layout
+  // effect and commits the new wrapper height before the next paint).
+  // But once fontScale is already != 1 (transform already active — either
+  // the teacher had set a custom font size before opening Smart Fix, or
+  // Smart Fix's own font-size rungs already ran), a LATER Smart Fix rung
+  // that only tightens spacing/line-height does NOT change fontScale, so
+  // this effect wouldn't re-run at all — the wrapper's explicit height
+  // would silently fall back to being driven by the `ResizeObserver`
+  // instead, which reacts to the resulting size change one extra,
+  // non-deterministic tick later (its callback timing isn't guaranteed to
+  // land inside the same commit/paint cycle the way a layout-effect
+  // re-run is). Smart Fix's settle() only waits a fixed ~110ms between
+  // rungs, so on a slower device or a long paper that ResizeObserver tick
+  // can still be in flight when the next measurement is taken —
+  // measurePageCount() then reads a stale (pre-update) height, and Smart
+  // Fix under-corrects, stalls early, or reports the wrong "still doesn't
+  // fit" result even though the visual change already landed.
+  // Fix: list every knob that changes this block's *unscaled* height
+  // (spacing gaps + line height) as explicit dependencies too, so any of
+  // them forces this same synchronous layout-effect measure-and-set path
+  // — not just fontScale. The ResizeObserver stays in place purely as a
+  // fallback for organic content changes (typing, adding an image) that
+  // Smart Fix never triggers, so it no longer needs to be Smart Fix's only
+  // path for settings-driven changes.
+  useLayoutEffect(() => {
+    const el = typoContentRef.current
+    if (!el || fontScale === 1) { setTypoScaledHeight(null); return undefined }
+    const measure = () => setTypoScaledHeight(el.scrollHeight * fontScale)
+    measure()
+    if (typeof ResizeObserver === 'undefined') return undefined
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [fontScale, spacingPx?.header, spacingPx?.section, spacingPx?.question, lineHeightValue])
 
   // Page Settings — Border & Frame category (extends the plain border
   // dropdown above). Only applies when a border is actually switched on;
@@ -511,6 +617,14 @@ export function A4Preview({ paper, pageRef, activeSet = '', showAnswerKey = fals
   const pageNumberPosition = settings.pageNumberPosition || 'inline'
   const pageNumberFormat = settings.pageNumberFormat || 'default'
   const pageNumberLabel = pageNumberFormat === 'number' ? '1' : pageNumberFormat === 'ofTotal' ? '1 / 1' : t('a4_page')
+  // The footer block (border + "End of Paper" line) is opt-in: it only
+  // renders once a teacher actually types Footer Text. Page numbering is a
+  // separate, still-on-by-default toggle — when there's no footer to sit
+  // inline inside, it falls back to a corner badge instead of disappearing.
+  const hasFooterText = !!settings.footerText
+  const showPageNumber = settings.showPageNumber !== false
+  const numberInFooter = showPageNumber && hasFooterText && pageNumberPosition === 'inline'
+  const numberAsCorner = showPageNumber && !numberInFooter
 
   // SRS 48/49 — deterministic per-set reorder, preview-only (does not mutate the paper).
   // Only shuffles when a Set has actually been picked; numbering (above) uses
@@ -541,7 +655,8 @@ export function A4Preview({ paper, pageRef, activeSet = '', showAnswerKey = fals
         </div>
       )}
 
-      <div style={typographyStyle}>
+      <div style={typoScaledHeight != null ? { height: `${typoScaledHeight}px` } : undefined}>
+      <div ref={typoContentRef} style={typographyStyle}>
       {/* Header */}
       <div className={`pb-4 font-display ${tpl.headerRule} ${headerBorderClass}`} style={border === 'header' || border === 'both' ? borderLookStyle : undefined}>
         {settings.headerLayout === 'split' || settings.headerLayout === 'split-both' ? (
@@ -625,6 +740,8 @@ export function A4Preview({ paper, pageRef, activeSet = '', showAnswerKey = fals
                       align={section.align || 'left'}
                       onAlign={(align) => updateSection(paper.id, section.id, { align })}
                       onText={(title) => updateSection(paper.id, section.id, { title })}
+                      style={section.titleStyle}
+                      onStyle={(titleStyle) => updateSection(paper.id, section.id, { titleStyle })}
                       className="font-display text-[15px] font-semibold uppercase tracking-wide text-ink-900"
                       placeholder={`Section ${sectionLetter(sIdx)}`}
                     />
@@ -648,6 +765,8 @@ export function A4Preview({ paper, pageRef, activeSet = '', showAnswerKey = fals
                     align={section.instructionAlign || 'left'}
                     onAlign={(align) => updateSection(paper.id, section.id, { instructionAlign: align })}
                     onText={(instruction) => updateSection(paper.id, section.id, { instruction })}
+                    style={section.instructionStyle}
+                    onStyle={(instructionStyle) => updateSection(paper.id, section.id, { instructionStyle })}
                     className="text-[12.5px] italic text-ink-500"
                   />
                 </div>
@@ -660,12 +779,14 @@ export function A4Preview({ paper, pageRef, activeSet = '', showAnswerKey = fals
                     align={noticeBox.align || 'left'}
                     onAlign={(align) => updateSection(paper.id, section.id, { noticeBox: { ...noticeBox, align } })}
                     onText={(text) => updateSection(paper.id, section.id, { noticeBox: { ...noticeBox, text } })}
+                    style={noticeBox.style}
+                    onStyle={(style) => updateSection(paper.id, section.id, { noticeBox: { ...noticeBox, style } })}
                     className="text-[12px] font-medium text-ink-700 dark:text-ink-200"
                   />
                 </div>
               )}
 
-              <div className={spacingPx ? '' : 'space-y-4'}>
+              <div className={spacingPx ? '' : 'space-y-3'}>
                 {section.questionGroups.map((group, gIdx) => (
                   <div key={group.id} style={questionGapStyle(gIdx)}>
                     {group.pageBreakBefore && (
@@ -680,7 +801,7 @@ export function A4Preview({ paper, pageRef, activeSet = '', showAnswerKey = fals
                     {(() => {
                       const groupShowMarks = group.showMarks !== false
                       return (
-                        <div className="mb-1 flex items-center justify-between gap-2">
+                        <div className="mb-0.5 flex items-center justify-between gap-2">
                           <div className="flex-1">
                             <EditableLine
                               as="p"
@@ -688,7 +809,9 @@ export function A4Preview({ paper, pageRef, activeSet = '', showAnswerKey = fals
                               align={group.customTypeNameAlign || 'left'}
                               onAlign={(align) => updateQuestionGroup(paper.id, section.id, group.id, { customTypeNameAlign: align })}
                               onText={(customTypeName) => updateQuestionGroup(paper.id, section.id, group.id, { customTypeName })}
-                              className="text-[11px] font-semibold italic text-ink-400"
+                              style={group.customTypeNameStyle}
+                              onStyle={(customTypeNameStyle) => updateQuestionGroup(paper.id, section.id, group.id, { customTypeNameStyle })}
+                              className="text-[11px] font-semibold italic leading-tight text-ink-400"
                               placeholder={group.questionType}
                             />
                           </div>
@@ -703,13 +826,15 @@ export function A4Preview({ paper, pageRef, activeSet = '', showAnswerKey = fals
                       )
                     })()}
                     {group.mode === 'normal' && !group.negativeMarks ? (
-                      <div className="mb-1.5">
+                      <div className={group.instruction ? 'mb-1.5' : ''}>
                         <EditableLine
                           as="p"
                           text={group.instruction}
                           align={group.instructionAlign || 'left'}
                           onAlign={(align) => updateQuestionGroup(paper.id, section.id, group.id, { instructionAlign: align })}
                           onText={(instruction) => updateQuestionGroup(paper.id, section.id, group.id, { instruction })}
+                          style={group.instructionStyle}
+                          onStyle={(instructionStyle) => updateQuestionGroup(paper.id, section.id, group.id, { instructionStyle })}
                           className="text-[12px] italic text-ink-500"
                         />
                       </div>
@@ -727,6 +852,8 @@ export function A4Preview({ paper, pageRef, activeSet = '', showAnswerKey = fals
                           align={group.passageAlign || 'left'}
                           onAlign={(align) => updateQuestionGroup(paper.id, section.id, group.id, { passageAlign: align })}
                           onText={(passage) => updateQuestionGroup(paper.id, section.id, group.id, { passage })}
+                          style={group.passageStyle}
+                          onStyle={(passageStyle) => updateQuestionGroup(paper.id, section.id, group.id, { passageStyle })}
                           className="text-[12.5px] italic text-ink-600 dark:text-ink-300"
                         />
                       </div>
@@ -739,35 +866,45 @@ export function A4Preview({ paper, pageRef, activeSet = '', showAnswerKey = fals
                           align={group.passageAlign || 'left'}
                           onAlign={(align) => updateQuestionGroup(paper.id, section.id, group.id, { passageAlign: align })}
                           onText={(passage) => updateQuestionGroup(paper.id, section.id, group.id, { passage })}
+                          style={group.passageStyle}
+                          onStyle={(passageStyle) => updateQuestionGroup(paper.id, section.id, group.id, { passageStyle })}
                           className="text-[12.5px] italic text-ink-600 dark:text-ink-300"
                         />
                       </div>
                     )}
-                    <ol className="space-y-2">
+                    <ol>
                       {group.mode === 'or' ? (() => {
                         const orShowMarks = group.showMarks !== false
+                        const orFirstId = group.questions[0]?.id
                         return (
-                        <li className="flex gap-2 text-[13.5px] leading-relaxed text-ink-800">
-                          <span className="font-semibold shrink-0">{numbering.get(group.questions[0]?.id)?.display}</span>
+                        <OrRowWrapper sectionId={section.id} groupId={group.id} questionId={orFirstId} t={t}>
+                          <span className="font-semibold shrink-0">{numbering.get(orFirstId)?.display}</span>
                           <div className="flex-1 space-y-1.5">
-                            {group.questions.map((question, i) => (
-                              <div key={question.id} className="flex gap-1.5" style={question.keepTogether ? { breakInside: 'avoid' } : undefined}>
+                            {group.questions.map((question, i) => {
+                              const jumpToQuestion = () => useUiStore.getState().requestFocusQuestion(section.id, group.id, question.id)
+                              return (
+                              <div key={question.id} data-question-el={question.id} data-section-id={section.id} data-group-id={group.id} data-keep-together={question.keepTogether ? 'true' : 'false'} className="flex gap-1.5" style={question.keepTogether ? { breakInside: 'avoid' } : undefined}>
                                 <span className="font-semibold shrink-0">({String.fromCharCode(65 + i)})</span>
                                 <QuestionBody
                                   question={question} group={group} marksPosition={marksPosition} showAnswerKey={showAnswerKey} t={t}
+                                  onJumpToQuestion={jumpToQuestion}
                                   onTextChange={(text) => updateQuestion(paper.id, section.id, group.id, question.id, { text })}
                                   onAlignChange={(align) => updateQuestion(paper.id, section.id, group.id, question.id, { align })}
+                                  onStyleChange={(style) => updateQuestion(paper.id, section.id, group.id, question.id, { style })}
                                   onImageResize={(patch) => updateQuestion(paper.id, section.id, group.id, question.id, { image: { ...(question.image || {}), ...patch } })}
                                   onAssertionChange={(assertion) => updateQuestion(paper.id, section.id, group.id, question.id, { assertion })}
                                   onAssertionAlign={(assertionAlign) => updateQuestion(paper.id, section.id, group.id, question.id, { assertionAlign })}
+                                  onAssertionStyleChange={(assertionStyle) => updateQuestion(paper.id, section.id, group.id, question.id, { assertionStyle })}
                                   onReasonChange={(reason) => updateQuestion(paper.id, section.id, group.id, question.id, { reason })}
                                   onReasonAlign={(reasonAlign) => updateQuestion(paper.id, section.id, group.id, question.id, { reasonAlign })}
+                                  onReasonStyleChange={(reasonStyle) => updateQuestion(paper.id, section.id, group.id, question.id, { reasonStyle })}
                                 />
                                 {i < group.questions.length - 1 && (
                                   <span className="ml-1 shrink-0 font-display italic text-gold-600">OR</span>
                                 )}
                               </div>
-                            ))}
+                              )
+                            })}
                           </div>
                           <MarksBadge
                             value={group.marksPerQuestion}
@@ -776,27 +913,45 @@ export function A4Preview({ paper, pageRef, activeSet = '', showAnswerKey = fals
                             onToggle={() => updateQuestionGroup(paper.id, section.id, group.id, { showMarks: !orShowMarks })}
                             t={t}
                           />
-                        </li>
+                        </OrRowWrapper>
                         )
                       })() : (
                         orderedQuestions(group).map((question) => {
                           const qShowMarks = question.showMarks !== false
+                          const jumpToQuestion = () => useUiStore.getState().requestFocusQuestion(section.id, group.id, question.id)
                           return (
                           <li
                             key={question.id}
-                            className="flex gap-2 text-[13.5px] leading-relaxed text-ink-800"
-                            style={question.keepTogether ? { breakInside: 'avoid' } : undefined}
+                            data-question-el={question.id}
+                            data-section-id={section.id}
+                            data-group-id={group.id}
+                            data-keep-together={question.keepTogether ? 'true' : 'false'}
+                            className="group/q relative flex gap-2 text-[13.5px] leading-relaxed text-ink-800"
+                            style={{
+                              ...(question.keepTogether ? { breakInside: 'avoid' } : {}),
+                              // The gap below this question is driven entirely by this
+                              // question's own "gap below" line style (default 8px, same
+                              // as the old fixed space-y-2 gap). Previously the ol used a
+                              // fixed Tailwind space-y-2, so a line's own marginBottom
+                              // (applied deep inside the flex item) only ever added on top
+                              // of that fixed 8px floor and could never shrink below it.
+                              marginBottom: `${question.style?.marginBottom ?? 8}px`,
+                            }}
                           >
                             <span className="font-semibold shrink-0">{numbering.get(question.id)?.display}</span>
                             <QuestionBody
                               question={question} group={group} marksPosition={marksPosition} showAnswerKey={showAnswerKey} t={t}
+                              onJumpToQuestion={jumpToQuestion}
                               onTextChange={(text) => updateQuestion(paper.id, section.id, group.id, question.id, { text })}
                               onAlignChange={(align) => updateQuestion(paper.id, section.id, group.id, question.id, { align })}
+                              onStyleChange={(style) => updateQuestion(paper.id, section.id, group.id, question.id, { style })}
                               onImageResize={(patch) => updateQuestion(paper.id, section.id, group.id, question.id, { image: { ...(question.image || {}), ...patch } })}
                               onAssertionChange={(assertion) => updateQuestion(paper.id, section.id, group.id, question.id, { assertion })}
                               onAssertionAlign={(assertionAlign) => updateQuestion(paper.id, section.id, group.id, question.id, { assertionAlign })}
+                              onAssertionStyleChange={(assertionStyle) => updateQuestion(paper.id, section.id, group.id, question.id, { assertionStyle })}
                               onReasonChange={(reason) => updateQuestion(paper.id, section.id, group.id, question.id, { reason })}
                               onReasonAlign={(reasonAlign) => updateQuestion(paper.id, section.id, group.id, question.id, { reasonAlign })}
+                              onReasonStyleChange={(reasonStyle) => updateQuestion(paper.id, section.id, group.id, question.id, { reasonStyle })}
                             />
                             <MarksBadge
                               value={questionEffectiveMarks(question)}
@@ -821,12 +976,20 @@ export function A4Preview({ paper, pageRef, activeSet = '', showAnswerKey = fals
         })}
       </div>
       </div>
-
-      <div className={`mt-10 border-t border-dashed border-ink-200 pt-2 text-[10px] text-ink-300 ${footerAlignClass}`}>
-        {settings.footerText ? <p>{settings.footerText}</p> : null}
-        <p>{t('a4_endOfPaper')}{settings.showPageNumber && pageNumberPosition === 'inline' ? ` · ${pageNumberLabel}` : ''}</p>
       </div>
-      {settings.showPageNumber && pageNumberPosition !== 'inline' && (
+
+      {/* No footer shows by default — the "End of Paper" line and its divider
+          only appear once a teacher actually adds Footer Text in Page
+          Settings. Page numbering (a separate opt-out toggle, on by default)
+          still works even with no footer text: it just falls back to a
+          corner badge instead of sitting inline in a footer that isn't there. */}
+      {hasFooterText && (
+        <div className={`mt-10 border-t border-dashed border-ink-200 pt-2 text-[10px] text-ink-300 ${footerAlignClass}`}>
+          <p>{settings.footerText}</p>
+          <p>{t('a4_endOfPaper')}{numberInFooter ? ` · ${pageNumberLabel}` : ''}</p>
+        </div>
+      )}
+      {numberAsCorner && (
         <span className={`absolute right-2 text-[10px] text-ink-300 ${pageNumberPosition === 'top-right' ? 'top-2' : 'bottom-2'}`}>
           {pageNumberLabel}
         </span>

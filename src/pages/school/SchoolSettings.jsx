@@ -54,12 +54,16 @@ export default function SchoolSettings() {
 
   const dirty = Object.keys(BLANK).some((k) => (form[k] || '') !== (school?.[k] || ''))
 
-  const save = () => {
+  const save = async () => {
     if (!form.schoolName.trim()) {
       toast.error('School name cannot be empty.')
       return
     }
-    updateSchoolProfile({ ...form, schoolName: form.schoolName.trim(), adminName: form.adminName.trim() })
+    const result = await updateSchoolProfile({ ...form, schoolName: form.schoolName.trim(), adminName: form.adminName.trim() })
+    if (!result.success) {
+      toast.error(result.message || 'Could not save school details.')
+      return
+    }
     toast.success('School details saved.')
   }
 

@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, FilePlus2, FolderOpen, Settings, CreditCard,
-  Library, LayoutTemplate, Users,
+  Library, LayoutTemplate, Users, LifeBuoy, CalendarClock,
 } from 'lucide-react'
 
 /**
@@ -18,6 +18,7 @@ export const TEACHER_NAV = [
   { to: '/templates', label: 'Templates', icon: LayoutTemplate },
   { to: '/subscription', label: 'Subscription', icon: CreditCard },
   { to: '/settings', labelKey: 'nav_settings', icon: Settings },
+  { to: '/help', label: 'Help & Guidance', icon: LifeBuoy },
 ]
 
 export const SCHOOL_NAV = [
@@ -25,10 +26,12 @@ export const SCHOOL_NAV = [
   { to: '/exam/new', labelKey: 'nav_createExam', icon: FilePlus2 },
   { to: '/school/papers', label: 'Papers', icon: FolderOpen },
   { to: '/school/teachers', label: 'Teachers', icon: Users },
+  { to: '/school/deadline', label: 'Submission Deadline', icon: CalendarClock },
   { to: '/school/question-bank', label: 'Question Bank', icon: Library },
   { to: '/school/templates', label: 'Templates', icon: LayoutTemplate },
   { to: '/school/subscription', label: 'Subscription', icon: CreditCard },
   { to: '/school/settings', label: 'School Settings', icon: Settings },
+  { to: '/help', label: 'Help & Guidance', icon: LifeBuoy },
 ]
 
 export function navFor(accountType) {

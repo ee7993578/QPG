@@ -15,18 +15,22 @@ import QuestionBank from './pages/QuestionBank'
 import Templates from './pages/Templates'
 import Subscription from './pages/Subscription'
 import Settings from './pages/Settings'
+import HelpGuidance from './pages/HelpGuidance'
 import SchoolHome from './pages/SchoolHome'
 import SchoolTeachers from './pages/school/SchoolTeachers'
 import SchoolPapers from './pages/school/SchoolPapers'
 import SchoolQuestionBank from './pages/school/SchoolQuestionBank'
 import SchoolTemplatesPage from './pages/school/SchoolTemplatesPage'
 import SchoolSettings from './pages/school/SchoolSettings'
+import SchoolDeadlineSettings from './pages/school/SchoolDeadlineSettings'
 import NotFound from './pages/NotFound'
 import { useAppStore } from './store/useAppStore'
 import { useAuthStore } from './store/authStore'
+import { subscriptionApi } from './services/subscriptionApi'
 import { DownloadLockModal } from './components/subscription/DownloadLockModal'
 import { PaymentDialog } from './components/subscription/PaymentDialog'
 import { Toaster } from './components/ui/Toaster'
+import { TourOverlay } from './components/tour/TourOverlay'
 
 function useAppliedTheme() {
   const theme = useAppStore((s) => s.theme)
@@ -95,8 +99,22 @@ export default function App() {
   useAppliedTheme()
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   const accountType = useAuthStore((s) => s.accountType)
+  const restoreSession = useAuthStore((s) => s.restoreSession)
 
   const homeRoute = !isAuthenticated ? '/login' : accountType === 'school' ? '/school' : '/dashboard'
+
+  // Section 56 — on a hard reload, the JWT is already in localStorage
+  // (zustand persist) but the profile/plan need refreshing from the
+  // backend: GET /api/me (session restore) + GET /api/subscription
+  // (download quota / active plan, used across Dashboard/QuestionBank/
+  // SchoolHome/the paywall — this must reflect the server, never a stale
+  // local guess).
+  useEffect(() => {
+    if (!isAuthenticated) return
+    restoreSession()
+    subscriptionApi.getCurrentPlan().catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated])
 
   return (
     <>
@@ -117,6 +135,7 @@ export default function App() {
         {/* Shared by both account types — both create and edit papers */}
         <Route path="/exam/new" element={<RequireAuth><CreateExam /></RequireAuth>} />
         <Route path="/paper/:paperId" element={<RequireAuth><PaperBuilder /></RequireAuth>} />
+        <Route path="/help" element={<RequireAuth><HelpGuidance /></RequireAuth>} />
 
         {/* Teacher workspace */}
         <Route path="/dashboard" element={<RequireTeacher><Dashboard /></RequireTeacher>} />
@@ -129,6 +148,7 @@ export default function App() {
         {/* School workspace — sections 9/11/22–25 */}
         <Route path="/school" element={<RequireSchool><SchoolHome /></RequireSchool>} />
         <Route path="/school/teachers" element={<RequireSchool><SchoolTeachers /></RequireSchool>} />
+        <Route path="/school/deadline" element={<RequireSchool><SchoolDeadlineSettings /></RequireSchool>} />
         <Route path="/school/papers" element={<RequireSchool><SchoolPapers /></RequireSchool>} />
         <Route path="/school/question-bank" element={<RequireSchool><SchoolQuestionBank /></RequireSchool>} />
         <Route path="/school/templates" element={<RequireSchool><SchoolTemplatesPage /></RequireSchool>} />
@@ -146,6 +166,13 @@ export default function App() {
 
       {/* Section 34 — toasts are global; public pages can use them too. */}
       <Toaster />
+
+      {/* Guided spotlight tour — mounted once, globally, so it keeps running
+          smoothly even if a step needs to switch the mobile Edit/Preview
+          view underneath it. */}
+      <RequireAuthMaybe>
+        <TourOverlay />
+      </RequireAuthMaybe>
     </>
   )
 }

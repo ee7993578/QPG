@@ -152,10 +152,6 @@ export function QuestionBankBrowser({
 }) {
   const myQuestions = useQuestionBankStore((s) => s.myQuestions)
   const schoolQuestions = useQuestionBankStore((s) => s.schoolQuestions)
-  const addQuestion = useQuestionBankStore((s) => s.addQuestion)
-  const updateQuestion = useQuestionBankStore((s) => s.updateQuestion)
-  const deleteQuestion = useQuestionBankStore((s) => s.deleteQuestion)
-  const copyToMine = useQuestionBankStore((s) => s.copyToMine)
 
   const questions = scope === 'school' ? schoolQuestions : myQuestions
 
@@ -233,31 +229,40 @@ export function QuestionBankBrowser({
         : [],
       author: editing ? editing.author : author,
     }
-    if (editing) {
-      await questionBankApi.update(scope, editing.id, payload)
-      updateQuestion(scope, editing.id, payload)
-      toast.success('Question updated.')
-    } else {
-      await questionBankApi.create(scope, payload)
-      addQuestion(scope, payload)
-      toast.success('Question added to the bank.')
+    try {
+      if (editing) {
+        await questionBankApi.update(scope, editing.id, payload)
+        toast.success('Question updated.')
+      } else {
+        await questionBankApi.create(scope, payload)
+        toast.success('Question added to the bank.')
+      }
+      setFormOpen(false)
+      setEditing(null)
+    } catch (err) {
+      toast.error(err?.message || 'Could not save the question.')
     }
-    setFormOpen(false)
-    setEditing(null)
   }
 
   const remove = async () => {
     if (!confirmDelete) return
-    await questionBankApi.remove(scope, confirmDelete.id)
-    deleteQuestion(scope, confirmDelete.id)
-    setConfirmDelete(null)
-    toast.success('Question deleted.')
+    try {
+      await questionBankApi.remove(scope, confirmDelete.id)
+      toast.success('Question deleted.')
+    } catch (err) {
+      toast.error(err?.message || 'Could not delete the question.')
+    } finally {
+      setConfirmDelete(null)
+    }
   }
 
   const copy = async (q) => {
-    await questionBankApi.copyToMine(q.id)
-    copyToMine(q.id)
-    toast.success('Copied to your question bank.')
+    try {
+      await questionBankApi.copyToMine(q.id)
+      toast.success('Copied to your question bank.')
+    } catch (err) {
+      toast.error(err?.message || 'Could not copy this question.')
+    }
   }
 
   return (

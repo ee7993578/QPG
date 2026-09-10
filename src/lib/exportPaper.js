@@ -26,7 +26,7 @@ const PAPER_SIZE_MM = {
   Legal: { width: 215.9, height: 355.6 },
 }
 
-function getVisiblePrintRoot() {
+export function getVisiblePrintRoot() {
   const nodes = document.querySelectorAll('#print-root')
   for (const el of nodes) {
     if (el.offsetParent !== null || el.getClientRects().length > 0) return el
@@ -47,6 +47,73 @@ function pageSizeMm(paper) {
   const base = PAPER_SIZE_MM[settings.paperSize] || PAPER_SIZE_MM.A4
   const landscape = settings.orientation === 'landscape'
   return landscape ? { width: base.height, height: base.width } : { width: base.width, height: base.height }
+}
+
+/** Reads the page's own background color, so "blank" is judged against
+ * whatever the teacher actually set (white, a tinted background, etc.),
+ * not a hardcoded assumption of white.
+ *
+ * Bug fix: sampling the literal corner pixel (1,1) frequently lands ON the
+ * page's own border/frame stroke (Border & Frame setting) rather than its
+ * interior fill — the border color and the interior background color can
+ * differ a lot, so every later comparison against that wrong reference
+ * fails and genuinely blank trailing pages stop being detected as blank
+ * (they slip into the downloaded PDF instead of being skipped). Sampling a
+ * handful of points well inside the page's own padding — clear of any
+ * border stroke, watermark, or corner-radius clipping — and taking the
+ * most common color among them is robust to that, and to any accidental
+ * overlap with real content on an unlucky sample point. */
+function readBackgroundColor(canvas) {
+  const ctx = canvas.getContext('2d')
+  const inset = 40 // canvas px — comfortably inside the smallest real page padding, past any border stroke
+  const samplePoints = [
+    [inset, inset],
+    [canvas.width - inset, inset],
+    [inset, canvas.height - inset],
+    [canvas.width - inset, canvas.height - inset],
+    [Math.floor(canvas.width / 2), inset],
+  ].filter(([x, y]) => x >= 0 && y >= 0 && x < canvas.width && y < canvas.height)
+
+  const counts = new Map()
+  for (const [x, y] of samplePoints) {
+    const { data } = ctx.getImageData(x, y, 1, 1)
+    const key = `${data[0]},${data[1]},${data[2]}`
+    counts.set(key, (counts.get(key) || 0) + 1)
+  }
+  let best = null
+  let bestCount = 0
+  for (const [key, count] of counts) {
+    if (count > bestCount) { best = key; bestCount = count }
+  }
+  const [r, g, b] = (best || '255,255,255').split(',').map(Number)
+  return { r, g, b }
+}
+
+/** Whether a candidate page-slice has no real content — i.e. it's just
+ * background color, the kind of trailing/leftover page a tighter Smart Fix
+ * layout can leave behind. Downsamples first so checking a full-resolution
+ * page (screenshotted at 2-3x pixel density) stays fast. */
+function isSliceBlank(sliceCanvas, bg, threshold = 12) {
+  const sampleW = Math.min(100, sliceCanvas.width)
+  const sampleH = Math.min(140, sliceCanvas.height)
+  const off = document.createElement('canvas')
+  off.width = sampleW
+  off.height = sampleH
+  const octx = off.getContext('2d')
+  octx.drawImage(sliceCanvas, 0, 0, sliceCanvas.width, sliceCanvas.height, 0, 0, sampleW, sampleH)
+  const { data } = octx.getImageData(0, 0, sampleW, sampleH)
+  for (let i = 0; i < data.length; i += 4) {
+    const alpha = data[i + 3]
+    if (alpha < 5) continue
+    if (
+      Math.abs(data[i] - bg.r) > threshold ||
+      Math.abs(data[i + 1] - bg.g) > threshold ||
+      Math.abs(data[i + 2] - bg.b) > threshold
+    ) {
+      return false
+    }
+  }
+  return true
 }
 
 /** Download the current preview as a pixel-faithful PDF. */
@@ -78,8 +145,18 @@ export async function downloadPaperAsPdf(paper) {
     const imgHeightMm = canvas.height / pxPerMm
     pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, imgWidthMm, imgHeightMm)
   } else {
+    // A tighter Smart Fix layout (or just a paper that happens to end
+    // exactly on a page boundary) can leave the screenshotted node a
+    // hair taller than its real content — e.g. leftover space from the
+    // page's own minimum-height. Slicing by height alone would turn that
+    // into extra, entirely blank pages in the download. Every candidate
+    // page is checked for actual content before it's added, so a blank
+    // page — wherever it falls — never makes it into the PDF, while at
+    // least one page always ships even if that check somehow flags all
+    // of them (e.g. a genuinely empty paper).
+    const bg = readBackgroundColor(canvas)
     let renderedPx = 0
-    let firstPage = true
+    let addedPages = 0
     while (renderedPx < canvas.height) {
       const sliceHeightPx = Math.min(pageHeightPx, canvas.height - renderedPx)
       const sliceCanvas = document.createElement('canvas')
@@ -90,12 +167,18 @@ export async function downloadPaperAsPdf(paper) {
       ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height)
       ctx.drawImage(canvas, 0, renderedPx, canvas.width, sliceHeightPx, 0, 0, canvas.width, sliceHeightPx)
 
-      if (!firstPage) pdf.addPage([pageWidthMm, pageHeightMm], pageWidthMm > pageHeightMm ? 'landscape' : 'portrait')
-      const sliceHeightMm = sliceHeightPx / pxPerMm
-      pdf.addImage(sliceCanvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, imgWidthMm, sliceHeightMm)
+      const isLastSlice = renderedPx + sliceHeightPx >= canvas.height
+      const blank = isSliceBlank(sliceCanvas, bg)
+      const mustKeepForNonEmptyPdf = blank && addedPages === 0 && isLastSlice
+
+      if (!blank || mustKeepForNonEmptyPdf) {
+        if (addedPages > 0) pdf.addPage([pageWidthMm, pageHeightMm], pageWidthMm > pageHeightMm ? 'landscape' : 'portrait')
+        const sliceHeightMm = sliceHeightPx / pxPerMm
+        pdf.addImage(sliceCanvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, imgWidthMm, sliceHeightMm)
+        addedPages += 1
+      }
 
       renderedPx += sliceHeightPx
-      firstPage = false
     }
   }
 

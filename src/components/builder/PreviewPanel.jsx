@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
-import { KeyRound, Shuffle, SlidersHorizontal, Settings2 } from 'lucide-react'
+import { KeyRound, Shuffle, SlidersHorizontal, Settings2, Sparkles } from 'lucide-react'
 import { A4Preview } from './A4Preview'
+import { SmartFixDialog } from './SmartFixDialog'
 import { Select } from '../ui/Select'
 import { Input, Label } from '../ui/Input'
 import {
@@ -9,6 +10,8 @@ import {
   BORDER_STYLE_OPTIONS, BORDER_WIDTH_OPTIONS, CORNER_RADIUS_OPTIONS,
   PAGE_BG_OPTIONS, WATERMARK_OPACITY_OPTIONS, WATERMARK_ANGLE_OPTIONS,
   PAGE_NUMBER_FORMAT_OPTIONS, PAGE_NUMBER_POSITION_OPTIONS, FOOTER_ALIGN_OPTIONS,
+  CUSTOM_FONT_SIZE_BASE_PX, CUSTOM_FONT_SIZE_MIN, CUSTOM_FONT_SIZE_MAX, DEFAULT_CUSTOM_FONT_SIZE_PX,
+  CUSTOM_LINE_HEIGHT_MIN, CUSTOM_LINE_HEIGHT_MAX, SPACING_CUSTOM_DEFAULT,
 } from '../../data/mockData'
 import { useAppStore } from '../../store/useAppStore'
 import { useTranslate } from '../../i18n'
@@ -48,6 +51,8 @@ export function PreviewPanel({ paper }) {
   // Page Settings panel (gear icon) — also tucked away by default.
   const [showPageSettings, setShowPageSettings] = useState(false)
   const [pageSettingsTab, setPageSettingsTab] = useState('page')
+  // Smart Fix — "fit my paper into N pages", see SmartFixDialog.jsx.
+  const [showSmartFix, setShowSmartFix] = useState(false)
 
   const settings = paper.settings || {}
   const update = (patch) => updatePaperSettings(paper.id, patch)
@@ -60,16 +65,33 @@ export function PreviewPanel({ paper }) {
     update({ marginCustom: { ...marginCustom, [key]: n } })
   }
 
+  const spacingCustom = settings.spacingCustom || SPACING_CUSTOM_DEFAULT
+  const updateSpacingCustom = (key, value) => {
+    const n = value === '' ? 0 : Number(value)
+    update({ spacingCustom: { ...spacingCustom, [key]: n } })
+  }
+
   return (
-    <div className="scroll-thin h-full overflow-y-auto bg-ink-100/60 p-4 dark:bg-ink-950 sm:p-8">
+    <div data-tour="builder-preview" className="scroll-thin h-full overflow-y-auto bg-ink-100/60 p-4 dark:bg-ink-950 sm:p-8">
       <div className="mx-auto mb-4 w-full max-w-[720px]">
-        <button
-          type="button"
-          onClick={() => setShowOptions((v) => !v)}
-          className="flex items-center gap-1.5 rounded-lg border border-ink-200 bg-white px-3 py-1.5 text-xs font-medium text-ink-500 shadow-sm hover:text-ink-800 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-400 dark:hover:text-ink-100"
-        >
-          <SlidersHorizontal className="h-3.5 w-3.5" /> {showOptions ? t('common_lessOptions') : t('common_moreOptions')}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            data-tour="preview-more-options"
+            onClick={() => setShowOptions((v) => !v)}
+            className="flex items-center gap-1.5 rounded-lg border border-ink-200 bg-white px-3 py-1.5 text-xs font-medium text-ink-500 shadow-sm hover:text-ink-800 dark:border-ink-800 dark:bg-ink-900 dark:text-ink-400 dark:hover:text-ink-100"
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5" /> {showOptions ? t('common_lessOptions') : t('common_moreOptions')}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowSmartFix(true)}
+            className="flex items-center gap-1.5 rounded-lg border border-gold-300 bg-gold-50 px-3 py-1.5 text-xs font-medium text-gold-700 shadow-sm hover:bg-gold-100 dark:border-gold-700/50 dark:bg-gold-900/20 dark:text-gold-300 dark:hover:bg-gold-900/30"
+          >
+            <Sparkles className="h-3.5 w-3.5" /> {t('smartFix_title')}
+          </button>
+        </div>
 
         {showOptions && (
           <div className="mt-2 flex w-full flex-wrap items-center gap-3 rounded-lg border border-ink-200 bg-white px-3 py-2 text-xs dark:border-ink-800 dark:bg-ink-900">
@@ -167,25 +189,66 @@ export function PreviewPanel({ paper }) {
               {pageSettingsTab === 'typography' && (
                 <>
                   <Field label={t('pageSettings_fontSize')}>
-                    <Select value={settings.fontSizePreset || 'normal'} onChange={(e) => update({ fontSizePreset: e.target.value })} className="h-8 w-32 text-xs">
+                    <Select value={settings.fontSizePreset || 'custom'} onChange={(e) => update({ fontSizePreset: e.target.value })} className="h-8 w-32 text-xs">
                       {FONT_SIZE_PRESETS.map((f) => <option key={f.value} value={f.value}>{t(f.labelKey)}</option>)}
                     </Select>
                   </Field>
+                  {(settings.fontSizePreset || 'custom') === 'custom' && (
+                    <Field label={t('pageSettings_fontSizeCustom')}>
+                      <Input
+                        type="number"
+                        min={CUSTOM_FONT_SIZE_MIN}
+                        max={CUSTOM_FONT_SIZE_MAX}
+                        step="0.5"
+                        value={settings.fontSizeCustomPx ?? DEFAULT_CUSTOM_FONT_SIZE_PX}
+                        onChange={(e) => update({ fontSizeCustomPx: e.target.value === '' ? DEFAULT_CUSTOM_FONT_SIZE_PX : Number(e.target.value) })}
+                        className="h-8 w-20 text-xs"
+                      />
+                    </Field>
+                  )}
                   <Field label={t('pageSettings_lineHeight')}>
                     <Select value={settings.lineHeightPreset || 'normal'} onChange={(e) => update({ lineHeightPreset: e.target.value })} className="h-8 w-32 text-xs">
                       {LINE_HEIGHT_PRESETS.map((l) => <option key={l.value} value={l.value}>{t(l.labelKey)}</option>)}
                     </Select>
                   </Field>
+                  {settings.lineHeightPreset === 'custom' && (
+                    <Field label={t('pageSettings_lineHeightCustom')}>
+                      <Input
+                        type="number"
+                        min={CUSTOM_LINE_HEIGHT_MIN}
+                        max={CUSTOM_LINE_HEIGHT_MAX}
+                        step="0.05"
+                        value={settings.lineHeightCustom ?? 1.5}
+                        onChange={(e) => update({ lineHeightCustom: e.target.value === '' ? 1.5 : Number(e.target.value) })}
+                        className="h-8 w-20 text-xs"
+                      />
+                    </Field>
+                  )}
                 </>
               )}
 
               {/* Spacing */}
               {pageSettingsTab === 'spacing' && (
-                <Field label={t('pageSettings_spacingPreset')}>
-                  <Select value={settings.spacingPreset || 'normal'} onChange={(e) => update({ spacingPreset: e.target.value })} className="h-8 w-40 text-xs">
-                    {SPACING_PRESETS.map((s) => <option key={s.value} value={s.value}>{t(s.labelKey)}</option>)}
-                  </Select>
-                </Field>
+                <>
+                  <Field label={t('pageSettings_spacingPreset')}>
+                    <Select value={settings.spacingPreset || 'normal'} onChange={(e) => update({ spacingPreset: e.target.value })} className="h-8 w-40 text-xs">
+                      {SPACING_PRESETS.map((s) => <option key={s.value} value={s.value}>{t(s.labelKey)}</option>)}
+                    </Select>
+                  </Field>
+                  {settings.spacingPreset === 'custom' && (
+                    <div className="flex w-full flex-wrap items-end gap-2 border-t border-dashed border-ink-100 pt-2 dark:border-ink-800">
+                      <Field label={t('pageSettings_spacingHeader')}>
+                        <Input type="number" min="0" value={spacingCustom.header} onChange={(e) => updateSpacingCustom('header', e.target.value)} className="h-8 w-16 text-xs" />
+                      </Field>
+                      <Field label={t('pageSettings_spacingSection')}>
+                        <Input type="number" min="0" value={spacingCustom.section} onChange={(e) => updateSpacingCustom('section', e.target.value)} className="h-8 w-16 text-xs" />
+                      </Field>
+                      <Field label={t('pageSettings_spacingQuestion')}>
+                        <Input type="number" min="0" value={spacingCustom.question} onChange={(e) => updateSpacingCustom('question', e.target.value)} className="h-8 w-16 text-xs" />
+                      </Field>
+                    </div>
+                  )}
+                </>
               )}
 
               {/* Border & Frame */}
@@ -284,6 +347,7 @@ export function PreviewPanel({ paper }) {
       </div>
       <p className="mx-auto mb-3 w-full max-w-[720px] text-center text-[11px] text-ink-400">{t('preview_tapToFormat')}</p>
       <A4Preview paper={paper} activeSet={activeSet} showAnswerKey={showAnswerKey} />
+      <SmartFixDialog open={showSmartFix} onClose={() => setShowSmartFix(false)} paper={paper} />
     </div>
   )
 }

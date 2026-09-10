@@ -1,5 +1,5 @@
 import React from 'react'
-import { Check, Sparkles } from 'lucide-react'
+import { Check, Sparkles, Building2 } from 'lucide-react'
 import { AppShell } from '../components/layout/AppShell'
 import { Card } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
@@ -10,13 +10,53 @@ import { subscriptionApi } from '../services/subscriptionApi'
 import { plansFor } from '../data/plans'
 import { formatDate } from '../lib/utils'
 
+const PLAN_LABEL = { [PLAN.FREE]: 'Free', [PLAN.TEACHER_PRO]: 'Teacher Pro', [PLAN.SCHOOL_PRO]: 'School Pro' }
+
 export default function Subscription() {
   const accountType = useAuthStore((s) => s.accountType) || 'teacher'
+  const teacher = useAuthStore((s) => s.teacher)
   const planType = useSubscriptionStore((s) => s.planType)
   const subscriptionActive = useSubscriptionStore((s) => s.subscriptionActive)
   const subscriptionExpiry = useSubscriptionStore((s) => s.subscriptionExpiry)
   const freeDownloadsUsed = useSubscriptionStore((s) => s.freeDownloadsUsed)
   const freeDownloadsLimit = useSubscriptionStore((s) => s.freeDownloadsLimit)
+  const managedBySchool = useSubscriptionStore((s) => s.managedBySchool)
+
+  // A teacher added by a School Admin (see authStore.mapUserToProfile —
+  // `schoolId` is only set for that case) has no plan of their own: the
+  // backend's GET /api/subscription already returns the SCHOOL's plan for
+  // them (read-only, `managedBySchool: true`), so here we just render it
+  // without any pricing grid or upgrade button. Fall back to the schoolId
+  // check before that first fetch has resolved. Only the admin
+  // (accountType 'school') can upgrade.
+  const isSchoolLinkedTeacher = accountType === 'teacher' && (managedBySchool || !!teacher?.schoolId)
+
+  if (isSchoolLinkedTeacher) {
+    return (
+      <AppShell title="Subscription" subtitle="Your plan, managed by your school" mobileTitle="Subscription">
+        <div className="mx-auto max-w-2xl space-y-6">
+          <Card className="flex flex-col gap-3 p-6">
+            <div className="flex items-center gap-2">
+              <Building2 className="h-4 w-4 text-gold-500" />
+              <p className="font-display text-lg font-semibold text-ink-900 dark:text-ink-50">
+                {PLAN_LABEL[planType] || 'Free'} <span className="text-sm font-normal text-ink-400">(your school's plan)</span>
+              </p>
+              {subscriptionActive && <Badge variant="success">Active</Badge>}
+            </div>
+            {subscriptionActive ? (
+              <p className="text-sm text-ink-500 dark:text-ink-400">Renews {formatDate(subscriptionExpiry)}</p>
+            ) : (
+              <p className="text-sm text-ink-500 dark:text-ink-400">{freeDownloadsUsed}/{freeDownloadsLimit} free downloads used across your school</p>
+            )}
+            <p className="mt-2 rounded-lg bg-ink-50 px-3 py-2.5 text-xs text-ink-500 dark:bg-ink-800 dark:text-ink-400">
+              This paper's account is linked to your school, so it shares your school's subscription. Only your
+              school admin can upgrade or change this plan.
+            </p>
+          </Card>
+        </div>
+      </AppShell>
+    )
+  }
 
   // Plans come from data/plans.js so this page, the landing page and the public
   // /pricing page can never quote different numbers (section 45).

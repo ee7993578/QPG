@@ -1,13 +1,15 @@
-import React, { useEffect, useState } from 'react'
-import { Library, Users, Lock } from 'lucide-react'
+import React, { useCallback, useEffect, useState } from 'react'
+import { Library, Users, Lock, WifiOff } from 'lucide-react'
 import { AppShell } from '../components/layout/AppShell'
 import { Card } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
-import { ListSkeleton } from '../components/ui/States'
+import { ListSkeleton, ErrorState } from '../components/ui/States'
 import { QuestionBankBrowser } from '../components/bank/QuestionBankBrowser'
 import { useAuthStore } from '../store/authStore'
 import { useSubscriptionStore, PLAN } from '../store/subscriptionStore'
 import { useQuestionBankStore } from '../store/questionBankStore'
+import { questionBankApi } from '../services/questionBankApi'
+import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import { cn } from '../lib/utils'
 import { useNavigate } from 'react-router-dom'
 
@@ -29,12 +31,28 @@ export default function QuestionBank() {
   const hasSchoolPlan = subscriptionActive && planType === PLAN.SCHOOL_PRO
   const [tab, setTab] = useState('mine')
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const isOnline = useOnlineStatus()
 
-  // Stands in for questionBankApi.list() once the backend exists (section 32).
-  useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 320)
-    return () => clearTimeout(timer)
-  }, [])
+  // GET /api/question-bank?scope=mine (+ ?scope=school when the school plan
+  // unlocks the shared bank tab).
+  const load = useCallback(() => {
+    let alive = true
+    setLoading(true)
+    setError(null)
+    const calls = [questionBankApi.list('mine')]
+    if (hasSchoolPlan) calls.push(questionBankApi.list('school'))
+    Promise.all(calls)
+      .then(() => { if (alive) setLoading(false) })
+      .catch((err) => {
+        if (!alive) return
+        setError(err?.message || 'Could not load the question bank.')
+        setLoading(false)
+      })
+    return () => { alive = false }
+  }, [hasSchoolPlan])
+
+  useEffect(() => load(), [load])
 
   const tabs = [
     { key: 'mine', label: 'My Questions', icon: Library },
@@ -48,6 +66,11 @@ export default function QuestionBank() {
       mobileTitle="Question Bank"
     >
       <div className="mx-auto max-w-4xl space-y-4">
+        {!isOnline && (
+          <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-900/40 dark:bg-amber-900/10 dark:text-amber-400">
+            <WifiOff className="h-3.5 w-3.5" /> You're offline — showing the last loaded questions.
+          </div>
+        )}
         <div className="flex gap-1 rounded-lg bg-ink-100 p-1 dark:bg-ink-900">
           {tabs.map(({ key, label, icon: Icon }) => (
             <button
@@ -68,6 +91,8 @@ export default function QuestionBank() {
 
         {loading ? (
           <ListSkeleton rows={4} />
+        ) : error ? (
+          <ErrorState message={error} onRetry={load} />
         ) : tab === 'mine' ? (
           <QuestionBankBrowser
             scope="mine"

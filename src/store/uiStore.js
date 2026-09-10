@@ -23,6 +23,19 @@ export const useUiStore = create((set, get) => ({
 
   dismissToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
   clearToasts: () => set({ toasts: [] }),
+
+  // ---------------------------------------------------------------------
+  // Preview → Edit "jump to question" (Feature: edit directly from
+  // preview). A double-click / tap-edit on a question in the live preview
+  // records which question the teacher wants, and the Editor panel
+  // (mounted in a separate part of the tree) watches this to expand,
+  // scroll to, and highlight that exact question. `nonce` makes every
+  // request unique even if the same question is picked twice in a row.
+  // ---------------------------------------------------------------------
+  focusQuestion: null, // { sectionId, groupId, questionId, nonce }
+  requestFocusQuestion: (sectionId, groupId, questionId) =>
+    set({ focusQuestion: { sectionId, groupId, questionId, nonce: Date.now() } }),
+  clearFocusQuestion: () => set({ focusQuestion: null }),
 }))
 
 /**

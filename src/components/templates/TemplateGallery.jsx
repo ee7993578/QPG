@@ -1,16 +1,17 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { LayoutTemplate, Check, Star, Pencil, Trash2, Plus, FilePlus2 } from 'lucide-react'
+import { LayoutTemplate, Check, Star, Pencil, Trash2, Plus } from 'lucide-react'
 import { Card } from '../ui/Card'
 import { Button } from '../ui/Button'
 import { Badge } from '../ui/Badge'
 import { Input, Textarea, Label } from '../ui/Input'
 import { Select } from '../ui/Select'
 import { Dialog } from '../ui/Dialog'
-import { EmptyState } from '../ui/States'
+import { EmptyState, ErrorState, ListSkeleton } from '../ui/States'
 import { useSchoolStore } from '../../store/schoolStore'
-import { useAppStore } from '../../store/useAppStore'
+import { useMyTemplatesStore } from '../../store/myTemplatesStore'
 import { templateApi } from '../../services/templateApi'
+import { paperTemplateApi } from '../../services/paperTemplateApi'
 import { toast } from '../../store/uiStore'
 import {
   PAPER_TEMPLATES, HEADER_LAYOUTS, BORDER_OPTIONS, MARKS_POSITIONS,
@@ -56,98 +57,46 @@ export function TemplateThumb({ variant = 'classic', className }) {
 }
 
 /**
- * "Apply to which paper?" — templates are meaningless without a paper, and a
- * teacher usually wants the one they're working on. Lists papers newest-first.
+ * "Use template" always creates a brand-new paper — it never edits an
+ * existing one. This just hands the template off to the same 3-step wizard
+ * used for "Create Exam" (CreateExam.jsx): every normal field (exam type,
+ * date, class, section, subject, duration, marks, school name, address) is
+ * asked there exactly as usual, pre-filled where the template has an
+ * opinion, and left fully editable. Only once that wizard actually creates
+ * the new paper does the template's layout/header/footer (and, for a full
+ * "layout" template, its blank section skeleton) get stamped onto it.
  */
-function ApplyDialog({ open, onClose, template }) {
-  const navigate = useNavigate()
-  const papers = useAppStore((s) => s.papers)
-  const updatePaperSettings = useAppStore((s) => s.updatePaperSettings)
-  const [paperId, setPaperId] = useState('')
-
-  const sorted = [...papers].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
-  const selected = paperId || sorted[0]?.id || ''
-
-  const apply = () => {
-    if (!selected || !template) return
-    updatePaperSettings(selected, template.settings)
-    toast.success(`"${template.name}" applied.`)
-    onClose()
-    navigate(`/paper/${selected}`)
-  }
-
-  return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      title={template ? `Apply "${template.name}"` : 'Apply template'}
-      footer={
-        sorted.length > 0 ? (
-          <>
-            <Button variant="ghost" onClick={onClose}>Cancel</Button>
-            <Button onClick={apply}>Apply template</Button>
-          </>
-        ) : (
-          <>
-            <Button variant="ghost" onClick={onClose}>Cancel</Button>
-            <Button onClick={() => { onClose(); navigate('/exam/new') }}>
-              <FilePlus2 className="h-4 w-4" /> Create a paper
-            </Button>
-          </>
-        )
-      }
-    >
-      {sorted.length === 0 ? (
-        <p>You don't have any papers yet. Create one first, then come back and apply this template to it.</p>
-      ) : (
-        <>
-          <p className="mb-4">
-            This changes the layout, header and formatting only — your sections and questions stay exactly as they are.
-          </p>
-          <Label htmlFor="apply-paper">Paper</Label>
-          <Select id="apply-paper" value={selected} onChange={(e) => setPaperId(e.target.value)}>
-            {sorted.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.examType || 'Untitled'} · {p.subject || '—'} · Class {p.className || '—'}
-              </option>
-            ))}
-          </Select>
-        </>
-      )}
-    </Dialog>
-  )
+function useTemplateForNewExam(navigate, template) {
+  if (!template) return
+  navigate('/exam/new', { state: { prefillTemplate: template } })
 }
 
 /** The four built-in layouts. Read-only — they ship with the app. */
 export function BuiltInTemplates() {
-  const [applying, setApplying] = useState(null)
+  const navigate = useNavigate()
 
   return (
-    <>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {PAPER_TEMPLATES.map(({ value, label }) => (
-          <Card key={value} className="flex flex-col p-4">
-            <TemplateThumb variant={value} />
-            <p className="mt-3 font-display font-semibold text-ink-900 dark:text-ink-50">{label}</p>
-            <p className="mt-0.5 flex-1 text-xs text-ink-400">
-              {value === 'classic' && 'Bold ruled header — the familiar school look.'}
-              {value === 'modern' && 'Heavier header rule with cleaner spacing.'}
-              {value === 'minimal' && 'Thin rule, maximum room for questions.'}
-              {value === 'school' && 'Double rule, board-exam styling.'}
-            </p>
-            <Button
-              variant="outline"
-              className="mt-4 w-full"
-              onClick={() => setApplying({ name: label, settings: { template: value } })}
-            >
-              Use this layout
-            </Button>
-          </Card>
-        ))}
-      </div>
-
-      <ApplyDialog open={!!applying} onClose={() => setApplying(null)} template={applying} />
-    </>
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {PAPER_TEMPLATES.map(({ value, label }) => (
+        <Card key={value} className="flex flex-col p-4">
+          <TemplateThumb variant={value} />
+          <p className="mt-3 font-display font-semibold text-ink-900 dark:text-ink-50">{label}</p>
+          <p className="mt-0.5 flex-1 text-xs text-ink-400">
+            {value === 'classic' && 'Bold ruled header — the familiar school look.'}
+            {value === 'modern' && 'Heavier header rule with cleaner spacing.'}
+            {value === 'minimal' && 'Thin rule, maximum room for questions.'}
+            {value === 'school' && 'Double rule, board-exam styling.'}
+          </p>
+          <Button
+            variant="outline"
+            className="mt-4 w-full"
+            onClick={() => useTemplateForNewExam(navigate, { name: label, settings: { template: value } })}
+          >
+            Use this layout
+          </Button>
+        </Card>
+      ))}
+    </div>
   )
 }
 
@@ -176,12 +125,9 @@ const BLANK_TEMPLATE = {
  * /school/templates from the teacher's read-only view of the same list.
  */
 export function SchoolTemplates({ editable = false }) {
+  const navigate = useNavigate()
   const templates = useSchoolStore((s) => s.templates)
-  const saveTemplate = useSchoolStore((s) => s.saveTemplate)
-  const removeTemplate = useSchoolStore((s) => s.removeTemplate)
-  const setDefaultTemplate = useSchoolStore((s) => s.setDefaultTemplate)
 
-  const [applying, setApplying] = useState(null)
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState(null)
   const [draft, setDraft] = useState(BLANK_TEMPLATE)
@@ -212,7 +158,6 @@ export function SchoolTemplates({ editable = false }) {
     }
     const payload = editing ? { ...editing, ...draft } : draft
     await templateApi.save(payload)
-    saveTemplate(payload)
     setFormOpen(false)
     setEditing(null)
     toast.success(editing ? 'Template updated.' : 'Template saved.')
@@ -221,14 +166,12 @@ export function SchoolTemplates({ editable = false }) {
   const remove = async () => {
     if (!confirmDelete) return
     await templateApi.remove(confirmDelete.id)
-    removeTemplate(confirmDelete.id)
     setConfirmDelete(null)
     toast.success('Template deleted.')
   }
 
   const makeDefault = async (tpl) => {
     await templateApi.setDefault(tpl.id)
-    setDefaultTemplate(tpl.id)
     toast.success(`"${tpl.name}" is now the school default.`)
   }
 
@@ -264,7 +207,7 @@ export function SchoolTemplates({ editable = false }) {
               <p className="mt-1 flex-1 text-xs text-ink-400">{tpl.description}</p>
 
               <div className="mt-4 flex items-center gap-2">
-                <Button variant="outline" className="flex-1" onClick={() => setApplying(tpl)}>
+                <Button variant="outline" className="flex-1" onClick={() => useTemplateForNewExam(navigate, tpl)}>
                   Use template
                 </Button>
                 {editable && (
@@ -287,8 +230,6 @@ export function SchoolTemplates({ editable = false }) {
           ))}
         </div>
       )}
-
-      <ApplyDialog open={!!applying} onClose={() => setApplying(null)} template={applying} />
 
       <Dialog
         open={formOpen}
@@ -394,5 +335,171 @@ export function SchoolTemplates({ editable = false }) {
         <p>Papers already using it keep their current formatting — they just won't be able to re-apply it.</p>
       </Dialog>
     </>
+  )
+}
+
+/**
+ * Personal "My Templates" — header/layout templates a teacher saved
+ * straight from one of their own papers on My Paper ("Save Header as
+ * Template" / "Save Paper Layout as Template"). Owner-only; nothing here is
+ * shared with the rest of the school.
+ */
+export function MyTemplates() {
+  const navigate = useNavigate()
+  const templates = useMyTemplatesStore((s) => s.templates)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [confirmDelete, setConfirmDelete] = useState(null)
+
+  const load = () => {
+    setLoading(true)
+    setError(null)
+    paperTemplateApi.list()
+      .catch((err) => setError(err?.message || 'Could not load your templates.'))
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(load, [])
+
+  const openApply = (tpl) => {
+    // The new-exam wizard reads `.sections` for a layout template's blank
+    // structure — the API stores/returns that same tree as `.structure`.
+    useTemplateForNewExam(navigate, tpl.type === 'layout' ? { ...tpl, sections: tpl.structure } : tpl)
+  }
+
+  const remove = async () => {
+    if (!confirmDelete) return
+    await paperTemplateApi.remove(confirmDelete.id)
+    setConfirmDelete(null)
+    toast.success('Template deleted.')
+  }
+
+  if (loading) return <ListSkeleton rows={3} />
+  if (error) return <ErrorState message={error} onRetry={load} />
+
+  return (
+    <>
+      {templates.length === 0 ? (
+        <EmptyState
+          icon={LayoutTemplate}
+          title="No personal templates yet"
+          message={'Open a paper from My Paper and use "Save Header as Template" or "Save Paper Layout as Template" to start your own library.'}
+        />
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {templates.map((tpl) => (
+            <Card key={tpl.id} className="flex flex-col p-4">
+              <TemplateThumb variant={tpl.settings?.template || 'classic'} />
+              <div className="mt-3 flex items-start justify-between gap-2">
+                <p className="font-display font-semibold text-ink-900 dark:text-ink-50">{tpl.name}</p>
+                <Badge variant={tpl.type === 'layout' ? 'gold' : 'neutral'}>
+                  {tpl.type === 'layout' ? 'Full layout' : 'Header only'}
+                </Badge>
+              </div>
+              <p className="mt-1 flex-1 text-xs text-ink-400">
+                {tpl.description || (tpl.type === 'layout'
+                  ? 'Sections, marks and formatting — question boxes left empty.'
+                  : 'Header, footer, font and spacing only.')}
+              </p>
+              <div className="mt-4 flex items-center gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => openApply(tpl)}>
+                  Use template
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setConfirmDelete(tpl)}
+                  aria-label="Delete template"
+                  title="Delete"
+                >
+                  <Trash2 className="h-4 w-4 text-pen-red" />
+                </Button>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      <Dialog
+        open={!!confirmDelete}
+        onClose={() => setConfirmDelete(null)}
+        title="Delete this template?"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setConfirmDelete(null)}>Cancel</Button>
+            <Button variant="danger" onClick={remove}>Delete</Button>
+          </>
+        }
+      >
+        <p>This only removes the saved template — papers you already made with it are unaffected.</p>
+      </Dialog>
+    </>
+  )
+}
+
+/**
+ * School Admin's "Teacher Templates" tab — a read-only, school-wide view of
+ * every personal template every teacher at the school has saved from their
+ * own papers (same personal templates each teacher sees under their own
+ * "My Templates"). The admin can use one to start a new paper but can't
+ * edit or delete a teacher's own template from here.
+ */
+export function TeacherTemplates() {
+  const navigate = useNavigate()
+  const [templates, setTemplates] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+
+  const load = () => {
+    setLoading(true)
+    setError(null)
+    paperTemplateApi.listSchoolTeachers()
+      .then(setTemplates)
+      .catch((err) => setError(err?.message || 'Could not load teacher templates.'))
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(load, [])
+
+  const openApply = (tpl) => {
+    // Same trick as MyTemplates: the wizard reads `.sections` for a layout
+    // template's blank structure, the API returns that tree as `.structure`.
+    useTemplateForNewExam(navigate, tpl.type === 'layout' ? { ...tpl, sections: tpl.structure } : tpl)
+  }
+
+  if (loading) return <ListSkeleton rows={3} />
+  if (error) return <ErrorState message={error} onRetry={load} />
+
+  return templates.length === 0 ? (
+    <EmptyState
+      icon={LayoutTemplate}
+      title="No teacher templates yet"
+      message="Once a teacher at your school saves a personal template from one of their papers, it will show up here."
+    />
+  ) : (
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {templates.map((tpl) => (
+        <Card key={tpl.id} className="flex flex-col p-4">
+          <TemplateThumb variant={tpl.settings?.template || 'classic'} />
+          <div className="mt-3 flex items-start justify-between gap-2">
+            <p className="font-display font-semibold text-ink-900 dark:text-ink-50">{tpl.name}</p>
+            <Badge variant={tpl.type === 'layout' ? 'gold' : 'neutral'}>
+              {tpl.type === 'layout' ? 'Full layout' : 'Header only'}
+            </Badge>
+          </div>
+          {tpl.ownerName && <p className="mt-0.5 text-[11px] font-medium text-ink-400">by {tpl.ownerName}</p>}
+          <p className="mt-1 flex-1 text-xs text-ink-400">
+            {tpl.description || (tpl.type === 'layout'
+              ? 'Sections, marks and formatting — question boxes left empty.'
+              : 'Header, footer, font and spacing only.')}
+          </p>
+          <div className="mt-4 flex items-center gap-2">
+            <Button variant="outline" className="flex-1" onClick={() => openApply(tpl)}>
+              Use template
+            </Button>
+          </div>
+        </Card>
+      ))}
+    </div>
   )
 }

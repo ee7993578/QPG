@@ -14,6 +14,7 @@ import { AdSlot } from '../components/ads/AdSlot'
 import { DownloadUsageCard } from '../components/subscription/DownloadUsageCard'
 import { useAppStore } from '../store/useAppStore'
 import { useAuthStore } from '../store/authStore'
+import { useTourStore } from '../store/tourStore'
 import { useSubscriptionStore } from '../store/subscriptionStore'
 import { paperApi } from '../services/paperApi'
 import { PLANS } from '../data/plans'
@@ -32,12 +33,22 @@ export default function Dashboard() {
   const freeDownloadsLimit = useSubscriptionStore((s) => s.freeDownloadsLimit)
 
   const [loading, setLoading] = useState(true)
+  const startTourIfUnseen = useTourStore((s) => s.startIfUnseen)
 
   useEffect(() => {
     let alive = true
     paperApi.getPapers().then(() => { if (alive) setLoading(false) })
     return () => { alive = false }
   }, [])
+
+  // First-ever visit to the Dashboard — walk the teacher through the four
+  // main things they can do, with a real spotlight on each button. Never
+  // shows again on its own after this (see tourStore); replayable from
+  // Settings.
+  useEffect(() => {
+    const id = setTimeout(() => startTourIfUnseen('dashboard'), 500)
+    return () => clearTimeout(id)
+  }, [startTourIfUnseen])
 
   const stats = useMemo(() => {
     const now = new Date()
@@ -65,10 +76,10 @@ export default function Dashboard() {
   }
 
   const quickActions = [
-    { label: 'Create Paper', hint: 'Start a new question paper', icon: FilePlus2, to: '/exam/new' },
-    { label: 'My Papers', hint: 'Open, edit or download', icon: FileText, to: '/papers' },
-    { label: 'Question Bank', hint: 'Reuse your saved questions', icon: Library, to: '/question-bank' },
-    { label: 'Templates', hint: 'Change the paper layout', icon: LayoutTemplate, to: '/templates' },
+    { label: 'Create Paper', hint: 'Start a new question paper', icon: FilePlus2, to: '/exam/new', tourId: 'qa-create' },
+    { label: 'My Papers', hint: 'Open, edit or download', icon: FileText, to: '/papers', tourId: 'qa-my-papers' },
+    { label: 'Question Bank', hint: 'Reuse your saved questions', icon: Library, to: '/question-bank', tourId: 'qa-question-bank' },
+    { label: 'Templates', hint: 'Change the paper layout', icon: LayoutTemplate, to: '/templates', tourId: 'qa-templates' },
   ]
 
   return (
@@ -126,9 +137,10 @@ export default function Dashboard() {
         <div>
           <h3 className="mb-3 font-display text-base font-semibold text-ink-900 dark:text-ink-50">Quick actions</h3>
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            {quickActions.map(({ label, hint, icon: Icon, to }) => (
+            {quickActions.map(({ label, hint, icon: Icon, to, tourId }) => (
               <Card
                 key={to}
+                data-tour={tourId}
                 role="button"
                 tabIndex={0}
                 onClick={() => navigate(to)}

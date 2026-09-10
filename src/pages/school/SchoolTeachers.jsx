@@ -34,8 +34,6 @@ function StatusBadge({ status }) {
 
 export default function SchoolTeachers() {
   const teachers = useSchoolStore((s) => s.teachers)
-  const addTeacher = useSchoolStore((s) => s.addTeacher)
-  const removeTeacher = useSchoolStore((s) => s.removeTeacher)
 
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -86,7 +84,6 @@ export default function SchoolTeachers() {
     setSaving(true)
     const payload = { ...draft, name: draft.name.trim(), mobile: draft.mobile.trim(), email: draft.email.trim() }
     await schoolApi.addTeacher(payload)
-    addTeacher(payload)
     setSaving(false)
     setAddOpen(false)
     toast.success(`${payload.name} added. They can sign in with ${payload.mobile}.`)
@@ -95,7 +92,6 @@ export default function SchoolTeachers() {
   const remove = async () => {
     if (!confirmRemove) return
     await schoolApi.removeTeacher(confirmRemove.id)
-    removeTeacher(confirmRemove.id)
     setConfirmRemove(null)
     toast.success('Teacher removed from your school.')
   }

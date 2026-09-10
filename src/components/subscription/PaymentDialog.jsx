@@ -21,11 +21,15 @@ export function PaymentDialog() {
   // Friendly name ("Teacher Pro") rather than the raw enum ("TEACHER_PRO").
   const activePlanName = PLANS.find((p) => p.id === planType)?.name || 'Pro'
 
-  // Section 38/44 — everything the UI does goes through the service layer, so
-  // swapping the mock for the real gateway + Spring Boot verification endpoint
-  // is a change in services/subscriptionApi.js only.
-  const runPayment = () => subscriptionApi.verifyPayment()
+  // Section 38/44 — everything the UI does goes through the service layer;
+  // this just opens the real Razorpay Checkout widget for the order the
+  // backend already created. The widget's own success handler is what
+  // calls subscriptionApi.verifyPayment() with the real signature.
+  const runPayment = () => subscriptionApi.openCheckout()
 
+  // 'creating' = order request in flight (no orderId yet); once the backend
+  // hands back a real order the state flips to 'initiated' and *that's*
+  // when it's safe to open the checkout widget.
   useEffect(() => {
     if (open && paymentState === 'initiated') {
       runPayment()
@@ -43,7 +47,7 @@ export function PaymentDialog() {
   return (
     <Dialog
       open={open}
-      onClose={paymentState === 'processing' ? undefined : closePaymentDialog}
+      onClose={paymentState === 'processing' || paymentState === 'creating' ? undefined : closePaymentDialog}
       title={paymentState === 'success' ? 'Payment Successful 🎉' : paymentState === 'failed' ? 'Payment Failed' : 'Upgrade PaperCraft'}
       footer={
         paymentState === 'success' ? (
@@ -53,16 +57,23 @@ export function PaymentDialog() {
             <Button variant="ghost" onClick={closePaymentDialog}>Cancel</Button>
             <Button onClick={runPayment}>Try Again</Button>
           </>
-        ) : paymentState === 'processing' ? null : (
+        ) : paymentState === 'processing' || paymentState === 'creating' ? null : (
           <Button variant="ghost" onClick={cancelPayment}>Cancel</Button>
         )
       }
     >
+      {paymentState === 'creating' && (
+        <div className="flex flex-col items-center gap-3 py-6 text-center">
+          <Loader2 className="h-8 w-8 animate-spin text-ink-500" />
+          <p>Setting up your order for <strong>{plan?.label}</strong>…</p>
+        </div>
+      )}
+
       {paymentState === 'processing' && (
         <div className="flex flex-col items-center gap-3 py-6 text-center">
           <Loader2 className="h-8 w-8 animate-spin text-ink-500" />
-          <p>Processing your payment of <strong>{plan?.label}</strong>…</p>
-          <p className="text-xs text-ink-400">This is a mock checkout — no real payment is taken.</p>
+          <p>Confirming your payment of <strong>{plan?.label}</strong>…</p>
+          <p className="text-xs text-ink-400">Test mode — use Razorpay's test card/UPI details, no real money is charged.</p>
         </div>
       )}
 

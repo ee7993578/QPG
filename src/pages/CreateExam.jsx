@@ -1,11 +1,12 @@
-import React, { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Check, FileText, Zap, Layers, GraduationCap, ArrowLeft, ArrowRight } from 'lucide-react'
+import React, { useEffect, useState } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
+import { Check, FileText, Zap, Layers, GraduationCap, ArrowLeft, ArrowRight, LayoutTemplate } from 'lucide-react'
 import { AppShell } from '../components/layout/AppShell'
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card'
 import { Label, Input, Textarea } from '../components/ui/Input'
 import { Select } from '../components/ui/Select'
 import { Button } from '../components/ui/Button'
+import { QuickSetupDialog } from '../components/exam/QuickSetupDialog'
 import { useAppStore } from '../store/useAppStore'
 import { useAuthStore } from '../store/authStore'
 import { toast } from '../store/uiStore'
@@ -23,31 +24,47 @@ const STEPS = ['createExam_step1', 'createExam_step2', 'createExam_step3']
 
 export default function CreateExam() {
   const navigate = useNavigate()
+  const location = useLocation()
   const teacher = useAuthStore((s) => s.teacher)
+  const school = useAuthStore((s) => s.school)
   const accountType = useAuthStore((s) => s.accountType)
   const createPaper = useAppStore((s) => s.createPaper)
   const addSection = useAppStore((s) => s.addSection)
   const addQuestionGroup = useAppStore((s) => s.addQuestionGroup)
+  const applyPaperTemplate = useAppStore((s) => s.applyPaperTemplate)
+  const updatePaperSettings = useAppStore((s) => s.updatePaperSettings)
   const t = useTranslate()
+
+  // Coming here from "Use template" (TemplateGallery) — a template is only
+  // ever applied to a BRAND NEW paper created by this same wizard, never to
+  // an existing one. `prefillTemplate` just seeds the form below; every
+  // field it seeds stays fully editable, exactly like a normal paper.
+  const prefillTemplate = location.state?.prefillTemplate || null
 
   // Straight to the blank wizard — no "pick a starting point" screen. The
   // quick-start templates (QUICK_START_TEMPLATES) still exist in the data
   // layer for a future "Insert template" action inside the builder itself.
   const [template, setTemplate] = useState('blank')
   const [step, setStep] = useState(0) // 0,1,2 → STEPS
+  const [showQuickSetup, setShowQuickSetup] = useState(false)
 
-  // Feature 5 — school name & address are pulled from the teacher's profile
-  // automatically, but stay fully editable right here.
+  // Feature 5 — school name & address are pulled from the signed-in
+  // profile automatically, but stay fully editable right here. A School
+  // Admin's details live on `school`, not `teacher` (that's null for a
+  // school account) — read from whichever one actually applies.
+  const profileSchoolName = accountType === 'school' ? (school?.schoolName || '') : (teacher?.school || '')
+  const profileAddress = accountType === 'school' ? (school?.address || '') : (teacher?.address || '')
+
   const [form, setForm] = useState({
-    examType: 'Unit Test',
-    customExamName: '',
+    examType: prefillTemplate ? 'Custom' : 'Unit Test',
+    customExamName: prefillTemplate?.name || '',
     examDate: '',
     duration: 60,
     customDuration: '',
     totalMarks: '',
-    schoolName: teacher?.school || '',
+    schoolName: profileSchoolName,
     showAddress: false,
-    address: teacher?.address || '',
+    address: profileAddress,
     className: 'X',
     customClassName: '',
     section: 'A',
@@ -56,6 +73,21 @@ export default function CreateExam() {
     customSubject: '',
   })
   const [errors, setErrors] = useState({})
+
+  // On a hard page reload landing directly on this screen, the profile
+  // (teacher/school) is still restoring from the backend (see
+  // authStore.restoreSession) at the moment this component's state is
+  // first initialized above, so it can arrive a beat later. Backfill the
+  // still-empty fields once it does, without ever overwriting anything the
+  // teacher has already typed.
+  useEffect(() => {
+    setForm((f) => ({
+      ...f,
+      schoolName: f.schoolName || profileSchoolName,
+      address: f.address || profileAddress,
+    }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profileSchoolName, profileAddress])
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }))
 
@@ -88,12 +120,45 @@ export default function CreateExam() {
     else navigate(accountType === 'school' ? '/school' : '/dashboard')
   }
 
-  const submit = () => {
+  // "<name>" already used by another paper → "<name> (1)", then "(2)", etc.
+  // Only ever renames the NEW paper being created here; every other paper
+  // is left completely untouched.
+  const examDisplayName = (p) => (p.examType === 'Custom' ? p.customExamName : p.examType) || 'Untitled paper'
+  const uniqueExamName = (baseName) => {
+    const taken = new Set(useAppStore.getState().papers.map(examDisplayName))
+    if (!taken.has(baseName)) return baseName
+    let n = 1
+    let candidate = `${baseName} (${n})`
+    while (taken.has(candidate)) {
+      n += 1
+      candidate = `${baseName} (${n})`
+    }
+    return candidate
+  }
+
+  const submit = async (quickSetupSections = null) => {
     if (!validateStep(2)) return
     const durationMinutes = form.duration === 'custom' ? Number(form.customDuration) : Number(form.duration)
-    const id = createPaper({
-      examType: form.examType,
-      customExamName: form.customExamName,
+
+    // Applying a template never edits the paper it was saved from — the
+    // wizard always produces a brand-new paper. If that would land on the
+    // same exam name as one already in the list, disambiguate it here.
+    let examType = form.examType
+    let customExamName = form.customExamName
+    if (prefillTemplate) {
+      const baseName = (examType === 'Custom' ? customExamName : examType).trim() || prefillTemplate.name || 'Untitled paper'
+      const finalName = uniqueExamName(baseName)
+      if (finalName !== baseName) {
+        examType = 'Custom'
+        customExamName = finalName
+      }
+    }
+
+    let id
+    try {
+      id = await createPaper({
+      examType,
+      customExamName,
       duration: durationMinutes,
       totalMarks: Number(form.totalMarks),
       examDate: form.examDate,
@@ -106,7 +171,22 @@ export default function CreateExam() {
       customSection: form.customSection,
       subject: form.subject,
       customSubject: form.customSubject,
-    })
+      })
+    } catch (err) {
+      toast.error(err?.message || 'Could not create the paper. Please try again.')
+      return
+    }
+
+    // Template flow — stamp the new paper's layout/header/footer settings
+    // (and, for a "full layout" template, its blank section skeleton) onto
+    // THIS newly-created paper only. Nothing else in the account changes.
+    if (prefillTemplate) {
+      if (prefillTemplate.sections) {
+        applyPaperTemplate(id, { settings: prefillTemplate.settings, sections: prefillTemplate.sections })
+      } else if (prefillTemplate.settings) {
+        updatePaperSettings(id, prefillTemplate.settings)
+      }
+    }
 
     // Quick-start template — pre-fill sections/question types so the teacher
     // lands on an already-populated paper instead of a blank one.
@@ -122,8 +202,27 @@ export default function CreateExam() {
       })
     }
 
+    // Quick Setup — same exact addSection/addQuestionGroup call pattern as
+    // the quick-start template above; every question this produces is a
+    // completely normal, fully editable question the moment the builder
+    // opens (see QuickSetupDialog.jsx).
+    if (quickSetupSections?.length) {
+      quickSetupSections.forEach((sectionTpl) => {
+        addSection(id)
+        const paper = useAppStore.getState().papers.find((p) => p.id === id)
+        const newSection = paper.sections[paper.sections.length - 1]
+        ;(sectionTpl.questionGroups || []).forEach((groupTpl) => {
+          addQuestionGroup(id, newSection.id, groupTpl)
+        })
+      })
+    }
+
     navigate(`/paper/${id}?view=edit`)
-    toast.success('Paper created. Add your questions on the left — the preview updates as you type.')
+    toast.success(
+      prefillTemplate
+        ? `New paper created from "${prefillTemplate.name}". Add your questions on the left.`
+        : 'Paper created. Add your questions on the left — the preview updates as you type.'
+    )
   }
 
   // ---------- Screen 0: pick a starting point ----------
@@ -160,8 +259,18 @@ export default function CreateExam() {
 
   // ---------- Screens 1–3: short guided wizard ----------
   return (
+    <>
     <AppShell title={t('createExam_title')} subtitle={t('createExam_subtitle')} mobileTitle={t('createExam_title')}>
       <div className="mx-auto max-w-2xl">
+        {prefillTemplate && (
+          <div className="mb-4 flex gap-2 rounded-lg bg-emerald-50 px-3 py-2.5 text-xs text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300">
+            <LayoutTemplate className="h-4 w-4 shrink-0" />
+            <p>
+              Creating a <strong>new paper</strong> using the "{prefillTemplate.name}" template — every field below
+              is editable. Your existing papers, including the one this template was saved from, are not changed.
+            </p>
+          </div>
+        )}
         {/* Step progress — always visible so the teacher knows exactly how far along they are. */}
         <div className="mb-5 flex items-center gap-2">
           {STEPS.map((key, i) => (
@@ -297,6 +406,18 @@ export default function CreateExam() {
                       </div>
                     )}
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowQuickSetup(true)}
+                    className="flex w-full items-center justify-between gap-2 rounded-xl2 border border-dashed border-gold-300 bg-gold-50/60 px-4 py-3 text-left transition hover:border-gold-400 dark:border-gold-500/40 dark:bg-gold-500/10"
+                  >
+                    <span>
+                      <span className="block text-sm font-semibold text-ink-800 dark:text-ink-50">{t('quickSetup_button')}</span>
+                      <span className="mt-0.5 block text-xs text-ink-400">{t('quickSetup_buttonHint')}</span>
+                    </span>
+                    <ArrowRight className="h-4 w-4 shrink-0 text-gold-600 dark:text-gold-400" />
+                  </button>
                 </>
               )}
 
@@ -313,5 +434,24 @@ export default function CreateExam() {
         </Card>
       </div>
     </AppShell>
+
+    <QuickSetupDialog
+      open={showQuickSetup}
+      onClose={() => setShowQuickSetup(false)}
+      targetTotalMarks={Number(form.totalMarks) || null}
+      onConfirm={async (sections) => {
+        // Quick Setup skips straight to paper creation — the teacher has
+        // already filled Step 3's fields to get here, so just make sure
+        // they're actually valid (same check the normal "Continue" button
+        // runs) before creating the real paper.
+        if (!validateStep(2)) {
+          setShowQuickSetup(false)
+          return
+        }
+        setShowQuickSetup(false)
+        await submit(sections)
+      }}
+    />
+    </>
   )
 }

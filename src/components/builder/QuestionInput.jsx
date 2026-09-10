@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import {
   Copy, Trash2, ChevronUp, ChevronDown, GripVertical, Image as ImageIcon,
   PenSquare, ListPlus, Pin, Languages, Maximize2, Plus,
@@ -6,6 +6,7 @@ import {
 import { Textarea, Input, Label } from '../ui/Input'
 import { ImageUploadField } from '../ui/ImageUploadField'
 import { useAppStore } from '../../store/useAppStore'
+import { useUiStore } from '../../store/uiStore'
 import { DropdownMenu, DropdownMenuButton, MenuItem, MenuSeparator } from '../ui/DropdownMenu'
 import { AnswerSpaceEditor } from './AnswerSpaceEditor'
 import { SubQuestionsEditor } from './SubQuestionsEditor'
@@ -25,6 +26,7 @@ export function QuestionInput({ paperId, sectionId, groupId, group, question, in
   const addOption = useAppStore((s) => s.addOption)
 
   const textRef = useRef(null)
+  const rootRef = useRef(null)
   const [expanded, setExpanded] = useState(false)
   const [showImage, setShowImage] = useState(!!question.image?.url)
   const [showAnswerSpace, setShowAnswerSpace] = useState((question.answerSpace?.type || 'none') !== 'none')
@@ -32,6 +34,29 @@ export function QuestionInput({ paperId, sectionId, groupId, group, question, in
 
   const questionType = group?.questionType || 'Custom'
   const set = (patch) => updateQuestion(paperId, sectionId, groupId, question.id, patch)
+
+  // Edit-from-preview landing spot — when a teacher double-clicks/taps this
+  // exact question in the live preview, jump here: scroll it into view,
+  // put the cursor in its text box, and briefly highlight the row so the
+  // teacher never has to hunt for the question themselves. Reuses this same
+  // editor; nothing special is rendered, just focused and scrolled to.
+  const focusQuestion = useUiStore((s) => s.focusQuestion)
+  const clearFocusQuestion = useUiStore((s) => s.clearFocusQuestion)
+  const [justArrived, setJustArrived] = useState(false)
+  useEffect(() => {
+    if (!focusQuestion || focusQuestion.questionId !== question.id || focusQuestion.groupId !== groupId) return
+    const el = rootRef.current
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    const focusTimer = setTimeout(() => {
+      const focusable = el?.querySelector('textarea, input')
+      focusable?.focus()
+    }, 320)
+    setJustArrived(true)
+    const highlightTimer = setTimeout(() => setJustArrived(false), 2200)
+    clearFocusQuestion()
+    return () => { clearTimeout(focusTimer); clearTimeout(highlightTimer) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusQuestion?.nonce])
 
   // SRS 37 — strip Word/HTML formatting on paste, keep plain text only.
   const handlePaste = (e) => {
@@ -50,7 +75,14 @@ export function QuestionInput({ paperId, sectionId, groupId, group, question, in
   const hasOptions = OPTION_BASED_TYPES.includes(questionType) && !isAssertionReason
 
   return (
-    <div className="group/q flex items-start gap-2 rounded-lg border border-transparent px-1 py-1.5 hover:border-ink-100 hover:bg-ink-50/60 dark:hover:border-ink-800 dark:hover:bg-ink-800/40">
+    <div
+      ref={rootRef}
+      className={`group/q flex items-start gap-2 rounded-lg border px-1 py-1.5 transition-colors duration-500 dark:hover:border-ink-800 dark:hover:bg-ink-800/40 ${
+        justArrived
+          ? 'border-gold-300 bg-gold-50/70 ring-2 ring-gold-200 dark:bg-gold-900/10'
+          : 'border-transparent hover:border-ink-100 hover:bg-ink-50/60'
+      }`}
+    >
       <GripVertical className="mt-2.5 h-4 w-4 shrink-0 cursor-grab text-ink-200 dark:text-ink-700" />
       <span className="mt-2.5 w-8 shrink-0 text-xs font-mono font-semibold text-ink-400">{label}</span>
 

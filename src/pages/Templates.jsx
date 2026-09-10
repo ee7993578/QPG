@@ -1,21 +1,38 @@
-import React, { useState } from 'react'
-import { LayoutTemplate, Building2 } from 'lucide-react'
+import React, { useEffect, useState } from 'react'
+import { LayoutTemplate, Building2, BookmarkCheck } from 'lucide-react'
 import { AppShell } from '../components/layout/AppShell'
-import { BuiltInTemplates, SchoolTemplates } from '../components/templates/TemplateGallery'
+import { BuiltInTemplates, SchoolTemplates, MyTemplates } from '../components/templates/TemplateGallery'
+import { useAuthStore } from '../store/authStore'
 import { cn } from '../lib/utils'
 
 /**
- * Section 25 — the teacher's Templates page. Built-in layouts are always
- * available; the school's shared templates are read-only here (only a School
- * admin can edit them, on /school/templates).
+ * Section 25 — the teacher's Templates page.
+ *
+ * - Individual teacher (no school): only "Software Templates" (built-in)
+ *   and "My Templates" (their own) — there is no school to share templates
+ *   with, so that tab is hidden entirely.
+ * - School-affiliated teacher: same as before — built-in layouts are always
+ *   available; the school's shared templates are read-only here (only a
+ *   School admin can edit them, on /school/templates); "My Templates" are
+ *   personal header/layout templates saved from My Paper.
  */
 export default function Templates() {
+  const schoolId = useAuthStore((s) => s.teacher?.schoolId)
+  const isIndividual = !schoolId
   const [tab, setTab] = useState('builtin')
 
-  const tabs = [
-    { key: 'builtin', label: 'Paper Layouts', icon: LayoutTemplate },
+  const allTabs = [
+    { key: 'builtin', label: 'Software Templates', icon: LayoutTemplate },
+    { key: 'mine', label: 'My Templates', icon: BookmarkCheck },
     { key: 'school', label: 'School Templates', icon: Building2 },
   ]
+  const tabs = isIndividual ? allTabs.filter((t) => t.key !== 'school') : allTabs
+
+  // If this teacher was ever on the school tab and their school link goes
+  // away (or the page loads for an individual teacher), fall back safely.
+  useEffect(() => {
+    if (isIndividual && tab === 'school') setTab('builtin')
+  }, [isIndividual, tab])
 
   return (
     <AppShell
@@ -42,7 +59,7 @@ export default function Templates() {
           ))}
         </div>
 
-        {tab === 'builtin' ? <BuiltInTemplates /> : <SchoolTemplates />}
+        {tab === 'builtin' ? <BuiltInTemplates /> : tab === 'mine' ? <MyTemplates /> : <SchoolTemplates />}
       </div>
     </AppShell>
   )

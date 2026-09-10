@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Sun, Moon, SunMoon, User, LogOut, Pencil, Check } from 'lucide-react'
+import { Sun, Moon, SunMoon, User, LogOut, Pencil, Check, Compass } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { AppShell } from '../components/layout/AppShell'
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card'
@@ -8,6 +8,7 @@ import { Button } from '../components/ui/Button'
 import { cn } from '../lib/utils'
 import { useAppStore } from '../store/useAppStore'
 import { useAuthStore } from '../store/authStore'
+import { useTourStore } from '../store/tourStore'
 import { authApi } from '../services/authApi'
 import { toast } from '../store/uiStore'
 import { useTranslate } from '../i18n'
@@ -36,7 +37,39 @@ export default function Settings() {
   const language = useAppStore((s) => s.language)
   const setLanguage = useAppStore((s) => s.setLanguage)
   const updateTeacherProfile = useAuthStore((s) => s.updateTeacherProfile)
+  const papers = useAppStore((s) => s.papers)
+  const restartTour = useTourStore((s) => s.restartTour)
   const t = useTranslate()
+
+  // The Edit/Preview/My Paper tours need a real paper (or paper list) open
+  // to point at — send the teacher there first (or straight to "Create
+  // Paper" if they don't have one yet) and start the tour right after.
+  const replayDashboardTour = () => {
+    navigate('/dashboard')
+    setTimeout(() => restartTour('dashboard'), 400)
+  }
+  const replayEditTour = () => {
+    if (papers.length === 0) {
+      navigate('/exam/new')
+      return
+    }
+    const latest = [...papers].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))[0]
+    navigate(`/paper/${latest.id}?view=edit`)
+    setTimeout(() => restartTour('edit'), 400)
+  }
+  const replayPreviewTour = () => {
+    if (papers.length === 0) {
+      navigate('/exam/new')
+      return
+    }
+    const latest = [...papers].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))[0]
+    navigate(`/paper/${latest.id}?view=preview`)
+    setTimeout(() => restartTour('preview'), 400)
+  }
+  const replayMyPaperTour = () => {
+    navigate('/papers')
+    setTimeout(() => restartTour('myPaper'), 400)
+  }
 
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState({ name: '', school: '', address: '' })
@@ -46,8 +79,12 @@ export default function Settings() {
     setForm({ name: teacher?.name || '', school: teacher?.school || '', address: teacher?.address || '' })
   }, [teacher])
 
-  const saveProfile = () => {
-    updateTeacherProfile(form)
+  const saveProfile = async () => {
+    const result = await updateTeacherProfile(form)
+    if (!result.success) {
+      toast.error(result.message || 'Could not save your profile.')
+      return
+    }
     setEditing(false)
     setSavedFlash(true)
     toast.success('Profile updated.')
@@ -154,6 +191,25 @@ export default function Settings() {
                 </button>
               ))}
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader><CardTitle className="flex items-center gap-2"><Compass className="h-4 w-4" /> Guided Tour</CardTitle></CardHeader>
+          <CardContent className="space-y-2.5">
+            <p className="text-xs text-ink-400">Confusion ho rahi hai kahan se shuru karein? Guided tour dobara chala sakte hain.</p>
+            <Button variant="outline" className="w-full justify-start" onClick={replayDashboardTour}>
+              Dashboard tour dobara dekhein
+            </Button>
+            <Button variant="outline" className="w-full justify-start" onClick={replayEditTour}>
+              Edit tour dobara dekhein
+            </Button>
+            <Button variant="outline" className="w-full justify-start" onClick={replayPreviewTour}>
+              Preview tour dobara dekhein
+            </Button>
+            <Button variant="outline" className="w-full justify-start" onClick={replayMyPaperTour}>
+              My Paper tour dobara dekhein
+            </Button>
           </CardContent>
         </Card>
 

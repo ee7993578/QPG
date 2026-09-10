@@ -2,27 +2,45 @@ import React, { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Search, Download, Pencil, Eye, Copy, Trash2, FilePlus2, SlidersHorizontal,
-  FolderOpen, X,
+  FolderOpen, X, LayoutTemplate, FileText, FileCode2, FileType, MoreVertical,
+  Send, Lock,
 } from 'lucide-react'
 import { Card } from '../ui/Card'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
-import { Input } from '../ui/Input'
+import { Input, Label } from '../ui/Input'
 import { Select } from '../ui/Select'
 import { Dialog } from '../ui/Dialog'
+import { DropdownMenu, MenuItem, MenuSeparator } from '../ui/DropdownMenu'
 import { EmptyState, ListSkeleton } from '../ui/States'
 import { useAppStore } from '../../store/useAppStore'
+import { useAuthStore } from '../../store/authStore'
 import { toast } from '../../store/uiStore'
+import { paperTemplateApi } from '../../services/paperTemplateApi'
+import { useTranslate } from '../../i18n'
 import {
   computePaperMarks, formatDate, formatDuration, classSectionLabel,
   resolveSubject, resolveClass,
 } from '../../lib/utils'
+import {
+  normalizeStatus, isEditableByTeacher, schoolPaperStatusLabelKey, schoolPaperStatusBadgeVariant,
+} from '../../lib/schoolPaperStatus'
+import { useDeadlineGate } from '../../lib/schoolDeadline'
 import { CLASS_OPTIONS, SUBJECTS } from '../../data/mockData'
 
 /**
  * The paper list, shared by the teacher's /papers and the school's
  * /school/papers (section 45 — one implementation, two routes). Search,
  * filters, sort, and the row actions all live here.
+ *
+ * School paper review lifecycle: a paper's own `schoolId` field is all
+ * that's needed to tell an individual teacher's paper apart from a
+ * school-connected teacher's paper (see PaperService.isSchoolWorkflowPaper
+ * on the backend — the same test, mirrored here). If `schoolId` is falsy
+ * this renders exactly as it always has: Draft/Saved badge, unrestricted
+ * Edit/Delete. If it's set, the 5-state lifecycle badge/actions apply. The
+ * backend is the real enforcement for every transition here — this is
+ * purely UI/UX so a teacher isn't shown actions the server will reject.
  */
 
 const SORTS = [
@@ -39,10 +57,19 @@ function examName(p) {
 
 export function PapersBrowser({ loading = false, emptyMessage }) {
   const navigate = useNavigate()
+  const t = useTranslate()
   const papers = useAppStore((s) => s.papers)
   const setActivePaper = useAppStore((s) => s.setActivePaper)
   const duplicatePaper = useAppStore((s) => s.duplicatePaper)
   const deletePaper = useAppStore((s) => s.deletePaper)
+  const submitPaperForReview = useAppStore((s) => s.submitPaperForReview)
+  const accountType = useAuthStore((s) => s.accountType)
+  const isTeacherView = accountType === 'teacher'
+  // Submission Deadline — UI/UX only, hides/disables actions the backend
+  // (PaperService -> SchoolDeadlineService.assertTeacherActionAllowed)
+  // would reject anyway. Never applies to a School Admin's own view of
+  // this same list (their actions here are never gated by the deadline).
+  const deadlineGate = useDeadlineGate()
 
   const [query, setQuery] = useState('')
   const [classFilter, setClassFilter] = useState('')
@@ -51,6 +78,10 @@ export function PapersBrowser({ loading = false, emptyMessage }) {
   const [sort, setSort] = useState('updated')
   const [showFilters, setShowFilters] = useState(false)
   const [pendingDelete, setPendingDelete] = useState(null)
+  const [templateDraft, setTemplateDraft] = useState(null) // { paper, type }
+  const [templateName, setTemplateName] = useState('')
+  const [savingTemplate, setSavingTemplate] = useState(false)
+  const [submittingId, setSubmittingId] = useState(null)
 
   const activeFilters = [classFilter, subjectFilter, statusFilter].filter(Boolean).length
 
@@ -96,14 +127,18 @@ export function PapersBrowser({ loading = false, emptyMessage }) {
   //
   // Section 42 — all of this is UI gating only. The backend must re-check
   // entitlement before it ever serves a file; nothing here is a boundary.
-  const handleDownload = (paper) => {
+  const handleDownload = (paper, format = 'pdf') => {
     setActivePaper(paper.id)
-    navigate(`/paper/${paper.id}?view=preview&download=pdf`)
+    navigate(`/paper/${paper.id}?view=preview&download=${format}`)
   }
 
-  const handleDuplicate = (paper) => {
-    duplicatePaper(paper.id)
-    toast.success('Paper duplicated.')
+  const handleDuplicate = async (paper) => {
+    try {
+      await duplicatePaper(paper.id)
+      toast.success('Paper duplicated.')
+    } catch (err) {
+      toast.error(err?.message || t('schoolPaper_actionFailed'))
+    }
   }
 
   const confirmDelete = () => {
@@ -112,12 +147,62 @@ export function PapersBrowser({ loading = false, emptyMessage }) {
     toast.success('Paper deleted.')
   }
 
+  // POST /api/papers/{id}/submit — teacher submits a Draft, or resubmits a
+  // Needs-Changes paper. Only ever shown/enabled for school-connected
+  // teacher papers in the right status (see isSchoolPaper/locked below);
+  // the backend re-validates the transition regardless.
+  const handleSubmitForReview = async (paper) => {
+    setSubmittingId(paper.id)
+    try {
+      await submitPaperForReview(paper.id)
+      toast.success(
+        normalizeStatus(paper.status) === 'NEEDS_CHANGES'
+          ? t('schoolPaper_resubmitSuccess')
+          : t('schoolPaper_submitSuccess')
+      )
+    } catch (err) {
+      toast.error(err?.message || t('schoolPaper_actionFailed'))
+    } finally {
+      setSubmittingId(null)
+    }
+  }
+
+  // "Save Header as Template" / "Save Paper Layout as Template" — opens the
+  // naming dialog below; the actual snapshot is built server-side from the
+  // saved paper (POST /api/papers/{id}/save-as-template), so this always
+  // saves the paper's real, persisted state.
+  const openSaveTemplate = (paper, type) => {
+    setTemplateDraft({ paper, type })
+    setTemplateName(`${examName(paper)} ${type === 'header' ? 'Header' : 'Layout'}`)
+  }
+
+  const confirmSaveTemplate = async () => {
+    if (!templateDraft || !templateName.trim()) return
+    setSavingTemplate(true)
+    try {
+      await paperTemplateApi.saveFromPaper(templateDraft.paper.id, {
+        type: templateDraft.type,
+        name: templateName.trim(),
+      })
+      toast.success(
+        templateDraft.type === 'header'
+          ? 'Header saved as template — find it under Templates → My Templates.'
+          : 'Paper layout saved as template — find it under Templates → My Templates.'
+      )
+      setTemplateDraft(null)
+    } catch (err) {
+      toast.error(err?.message || 'Could not save this as a template.')
+    } finally {
+      setSavingTemplate(false)
+    }
+  }
+
   if (loading) return <ListSkeleton rows={4} />
 
   return (
     <>
       <div className="flex flex-col gap-2 sm:flex-row">
-        <div className="relative flex-1">
+        <div data-tour="mypapers-search" className="relative flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
           <Input
             className="pl-9"
@@ -130,7 +215,7 @@ export function PapersBrowser({ loading = false, emptyMessage }) {
         <Select value={sort} onChange={(e) => setSort(e.target.value)} className="sm:w-52" aria-label="Sort papers">
           {SORTS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
         </Select>
-        <Button variant="outline" onClick={() => setShowFilters((v) => !v)} className="sm:w-auto">
+        <Button data-tour="mypapers-filters" variant="outline" onClick={() => setShowFilters((v) => !v)} className="sm:w-auto">
           <SlidersHorizontal className="h-4 w-4" /> Filters{activeFilters ? ` (${activeFilters})` : ''}
         </Button>
       </div>
@@ -169,9 +254,13 @@ export function PapersBrowser({ loading = false, emptyMessage }) {
           <EmptyState
             icon={FolderOpen}
             title="No papers yet"
-            message={emptyMessage || 'Create your first question paper — it takes about ten minutes, and creating is always free.'}
-            actionLabel="Create New Paper"
-            onAction={() => navigate('/exam/new')}
+            message={
+              deadlineGate.applies && !deadlineGate.allowed
+                ? 'The submission window is currently closed — contact your School Admin if you need an extension.'
+                : (emptyMessage || 'Create your first question paper — it takes about ten minutes, and creating is always free.')
+            }
+            actionLabel={deadlineGate.applies && !deadlineGate.allowed ? undefined : 'Create New Paper'}
+            onAction={deadlineGate.applies && !deadlineGate.allowed ? undefined : () => navigate('/exam/new')}
           />
         ) : filtered.length === 0 ? (
           <EmptyState
@@ -185,44 +274,121 @@ export function PapersBrowser({ loading = false, emptyMessage }) {
           <div className="space-y-3">
             {filtered.map((paper) => {
               const { obtainableMarks } = computePaperMarks(paper)
+              // School review lifecycle only ever applies to a school-connected
+              // teacher's own paper (paper.schoolId set) — an individual
+              // teacher's paper (schoolId falsy) renders exactly as before.
+              const isSchoolPaper = !!paper.schoolId
+              const normalizedStatus = isSchoolPaper ? normalizeStatus(paper.status) : null
+              // Submission Deadline — only ever narrows things further for
+              // the owning teacher's own school-connected paper; never
+              // applies to an individual teacher's paper or a School
+              // Admin's view of this same list.
+              const deadlineBlocked = isTeacherView && isSchoolPaper && !deadlineGate.allowed
+              const editable = (!isSchoolPaper || isEditableByTeacher(paper.status)) && !deadlineBlocked
+              const canSubmit = isSchoolPaper && (normalizedStatus === 'DRAFT' || normalizedStatus === 'NEEDS_CHANGES') && !deadlineBlocked
+              const canDuplicate = !deadlineBlocked
+              const isSubmitting = submittingId === paper.id
               return (
                 <Card key={paper.id} className="p-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <p className="font-display font-semibold text-ink-900 dark:text-ink-50">{examName(paper)}</p>
-                        <Badge variant={paper.status === 'draft' ? 'neutral' : 'success'}>
-                          {paper.status === 'draft' ? 'Draft' : 'Saved'}
-                        </Badge>
+                        {isSchoolPaper ? (
+                          <Badge variant={schoolPaperStatusBadgeVariant(paper.status)}>
+                            {t(schoolPaperStatusLabelKey(paper.status))}
+                          </Badge>
+                        ) : (
+                          <Badge variant={paper.status === 'draft' ? 'neutral' : 'success'}>
+                            {paper.status === 'draft' ? 'Draft' : 'Saved'}
+                          </Badge>
+                        )}
+                        {isSchoolPaper && !editable && (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-ink-400">
+                            <Lock className="h-3 w-3" /> {t('schoolPaper_lockedReadOnly')}
+                          </span>
+                        )}
                       </div>
                       <p className="mt-1 text-xs text-ink-400">
                         {resolveSubject(paper)} · {classSectionLabel(paper) ? `Class ${classSectionLabel(paper)} · ` : ''}
                         {formatDate(paper.examDate)} · {formatDuration(paper.duration)} · {obtainableMarks}/{paper.totalMarks} marks
                       </p>
+                      {isSchoolPaper && normalizedStatus === 'NEEDS_CHANGES' && paper.reviewComment && (
+                        <p className="mt-1.5 rounded-md bg-red-50 px-2 py-1 text-xs text-pen-red dark:bg-red-900/20 dark:text-red-300">
+                          {paper.reviewComment}
+                        </p>
+                      )}
                     </div>
-                    <div className="flex shrink-0 flex-wrap gap-2">
-                      <Button size="sm" variant="outline" onClick={() => openPaper(paper.id, 'preview')}>
-                        <Eye className="h-3.5 w-3.5" /> Preview
+                    <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                      {isSchoolPaper && canSubmit && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => handleSubmitForReview(paper)}
+                          disabled={isSubmitting}
+                          title={normalizedStatus === 'NEEDS_CHANGES' ? t('schoolPaper_resubmit') : t('schoolPaper_submitForReview')}
+                        >
+                          <Send className="h-3.5 w-3.5" />
+                          <span className="hidden sm:inline">
+                            {normalizedStatus === 'NEEDS_CHANGES' ? t('schoolPaper_resubmit') : t('schoolPaper_submitForReview')}
+                          </span>
+                        </Button>
+                      )}
+                      <Button data-tour="mypapers-preview" size="sm" variant="outline" onClick={() => openPaper(paper.id, 'preview')} title="Preview" aria-label="Preview paper">
+                        <Eye className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Preview</span>
                       </Button>
-                      <Button size="sm" variant="outline" onClick={() => openPaper(paper.id, 'edit')}>
-                        <Pencil className="h-3.5 w-3.5" /> Edit
-                      </Button>
-                      <Button size="sm" variant="secondary" onClick={() => handleDownload(paper)}>
-                        <Download className="h-3.5 w-3.5" /> Download
-                      </Button>
-                      <Button size="sm" variant="ghost" onClick={() => handleDuplicate(paper)} title="Duplicate" aria-label="Duplicate paper">
-                        <Copy className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setPendingDelete(paper.id)}
-                        title="Delete"
-                        aria-label="Delete paper"
-                        className="text-pen-red hover:bg-red-50 dark:hover:bg-red-900/20"
+                      {editable && (
+                        <Button data-tour="mypapers-edit" size="sm" variant="outline" onClick={() => openPaper(paper.id, 'edit')} title="Edit" aria-label="Edit paper">
+                          <Pencil className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Edit</span>
+                        </Button>
+                      )}
+                      <DropdownMenu
+                        trigger={
+                          <Button data-tour="mypapers-download" size="sm" variant="secondary" title="Download" aria-label="Download paper">
+                            <Download className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Download</span>
+                          </Button>
+                        }
+                        menuClassName="min-w-[14rem]"
                       >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
+                        <MenuItem icon={FileText} onClick={() => handleDownload(paper, 'pdf')}>
+                          Download as PDF
+                        </MenuItem>
+                        <MenuItem icon={FileCode2} onClick={() => handleDownload(paper, 'docx')}>
+                          Download as Word (.docx)
+                        </MenuItem>
+                        <MenuItem icon={FileType} onClick={() => handleDownload(paper, 'doc')}>
+                          Download as Word (.doc)
+                        </MenuItem>
+                      </DropdownMenu>
+                      {/* Everything secondary is tucked behind one "More" menu so the
+                          card never wraps to a crowded second row on mobile — this
+                          always shows, unlike the previous row of loose icon buttons. */}
+                      <DropdownMenu
+                        trigger={
+                          <Button data-tour="mypapers-more" size="sm" variant="ghost" title="More actions" aria-label="More actions">
+                            <MoreVertical className="h-3.5 w-3.5" />
+                          </Button>
+                        }
+                      >
+                        <MenuItem icon={Copy} onClick={() => handleDuplicate(paper)} disabled={!canDuplicate}>
+                          Duplicate
+                        </MenuItem>
+                        <MenuSeparator />
+                        <MenuItem icon={FileText} onClick={() => openSaveTemplate(paper, 'header')}>
+                          Save Header as Template
+                        </MenuItem>
+                        <MenuItem icon={LayoutTemplate} onClick={() => openSaveTemplate(paper, 'layout')}>
+                          Save Paper Layout as Template
+                        </MenuItem>
+                        {editable && (
+                          <>
+                            <MenuSeparator />
+                            <MenuItem icon={Trash2} danger onClick={() => setPendingDelete(paper.id)}>
+                              Delete paper
+                            </MenuItem>
+                          </>
+                        )}
+                      </DropdownMenu>
                     </div>
                   </div>
                 </Card>
@@ -245,15 +411,54 @@ export function PapersBrowser({ loading = false, emptyMessage }) {
       >
         This will remove the paper from your list. This action cannot be undone.
       </Dialog>
+
+      <Dialog
+        open={!!templateDraft}
+        onClose={() => setTemplateDraft(null)}
+        title={templateDraft?.type === 'header' ? 'Save header as template' : 'Save paper layout as template'}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setTemplateDraft(null)}>Cancel</Button>
+            <Button onClick={confirmSaveTemplate} disabled={savingTemplate || !templateName.trim()}>
+              {savingTemplate ? 'Saving…' : 'Save template'}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-ink-500">
+            {templateDraft?.type === 'header'
+              ? 'Saves the header, footer, font and spacing only — nothing about the questions.'
+              : 'Saves the full section/question layout — marks, counts, and formatting — with every question box left empty, ready to fill in next time.'}
+          </p>
+          <div>
+            <Label htmlFor="new-tpl-name">Template name</Label>
+            <Input
+              id="new-tpl-name"
+              value={templateName}
+              onChange={(e) => setTemplateName(e.target.value)}
+              placeholder="e.g. Half Yearly Header"
+            />
+          </div>
+          <p className="text-xs text-ink-400">Find it later under Templates → My Templates.</p>
+        </div>
+      </Dialog>
     </>
   )
 }
 
-/** Shared header action so both routes offer the same primary CTA. */
+/**
+ * Shared header action so both routes offer the same primary CTA.
+ * Submission Deadline — disabled for a school-connected teacher once the
+ * backend would reject `createPaper()` anyway (server is still the real
+ * gate); never disabled for an individual teacher or a School Admin.
+ */
 export function CreatePaperButton() {
   const navigate = useNavigate()
+  const deadlineGate = useDeadlineGate()
+  const blocked = deadlineGate.applies && !deadlineGate.allowed
   return (
-    <Button onClick={() => navigate('/exam/new')}>
+    <Button onClick={() => navigate('/exam/new')} disabled={blocked} title={blocked ? 'The submission window is currently closed.' : undefined}>
       <FilePlus2 className="h-4 w-4" /> Create New Paper
     </Button>
   )

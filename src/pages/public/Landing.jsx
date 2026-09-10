@@ -29,7 +29,7 @@ const FEATURES = [
   { icon: ListChecks, title: 'Every question type', body: 'MCQ, Assertion-Reason, Match the Following, Case Study, sub-questions and more.' },
   { icon: Library, title: 'Question bank', body: 'Save questions once, reuse them in any paper. Filter by class, chapter and difficulty.' },
   { icon: Users, title: 'Built for schools too', body: 'Add your teachers, share templates and a common question bank across the school.' },
-  { icon: Download, title: 'Download & print', body: 'Export a clean PDF or an editable Word/Google Doc that matches the preview exactly.' },
+  { icon: Download, title: 'Download & print', body: 'Download a clean PDF or an editable Word/Google Doc that matches the preview exactly.' },
 ]
 
 const QUESTION_TYPES = [
